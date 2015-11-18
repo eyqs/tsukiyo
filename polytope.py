@@ -1,18 +1,17 @@
 """
-Polyhedron Shader v0.76
+Polyhedron Shader v0.77
 
 This program shades convex polyhedra.
-The direction of light can now be set in the same way as the viewAxis,
-though the distance to the camera and the light source are the same.
-Also, all lines are now trimmed down to 79 characters in length and
-mainloop is added to the end to accomodate non-IDLE editors.
+The intensity and colour of light can now be set by text input.
+Calculations only use RGB instead of L*a*b* for convenience,
+so the coloured lighting makes little intuitive sense.
 """
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
 import random
 
-TITLE = 'Polyhedron Shader v0.76'
+TITLE = 'Polyhedron Shader v0.77'
 DESCRIPTION = '\nThis script displays shaded polyhedra.'
 pi = math.pi
 WIDTH = 600
@@ -30,7 +29,6 @@ SNUBABLE = (['2', '3', '3'], ['2', '3', '4'], ['2', '3', '5'],
             ['2', '3', '5/3'], ['2', '3/2', '3/2'], ['2', '3/2', '4'],
             ['2', '3/2', '4/3'], ['2', '3/2', '5/3'], ['2', '5', '5/2'],
             ['2', '5', '5/3'], ['3', '5', '5/3'], ['3/2', '4', '4'])
-
 
 def distance(head, tail=[0,0,0,0]):
     """Return the distance squared between two points."""
@@ -447,9 +445,17 @@ class Main(ttk.Frame):
             self.statusText.set('New rotation axes: ' +
                                 self.canvas.get_data('rot'))
 
-        elif event == 'light':
+        elif event == 'laxis':
             self.statusText.set('New light position: ' +
-                                self.canvas.get_data('light'))
+                                self.canvas.get_data('laxis'))
+
+        elif event == 'lcol':
+            self.statusText.set('New light colour: ' + 
+                                self.canvas.get_data('lcol'))
+
+        elif event == 'lint':
+            self.statusText.set('New light intensity: ' +
+                                self.canvas.get_data('lint'))
 
         elif event == 'faces':
             name = {3:'triangle', 4:'square', 5:'pentagon', 6:'hexagon',
@@ -480,7 +486,7 @@ class Main(ttk.Frame):
             self.wire.set(1)
             self.wireCheck.config(state=tk.DISABLED)
 
-        elif change == 'z':
+        elif change == 'z':         # All ZOOM values are explained at top
             self.zoom.set(min(value, ZOOM*RADIUS*RETINA/2))
         elif change == 'zUp':
             self.zoom.set(min(self.zoom.get() + 5, ZOOM*RADIUS*RETINA/2))
@@ -492,7 +498,7 @@ class Main(ttk.Frame):
             self.unitDist = math.ceil((ZOOM*RADIUS*RETINA/value)**(2/3))
             if self.unitDist >= 100:
                 self.unitDist = 100
-            if self.unitDist**(3/2) > ZOOM*RETINA:
+            if self.unitDist**(3/2) > ZOOM*RETINA:  # If value < RADIUS
                 self.change('wire')
         elif change == 'dUp':
             self.unitDist -= 1
@@ -533,6 +539,8 @@ class Canvas(tk.Canvas):
     Public methods:
     set_viewaxis
     set_lightaxis
+    set_lightcolour
+    set_lightintensity
     set_rotax
     set_select
     rotate
@@ -587,7 +595,21 @@ class Canvas(tk.Canvas):
         self._lightAxis = (lightAxis)
         self.render()
         if self._currPolytope.get_points():
-            self.parent.set_status('light')
+            self.parent.set_status('laxis')
+
+    def set_lightcolour(self, lightColour):
+        """Change the light colour. Takes RGB values."""
+        self._lightColour = (lightColour)
+        self.render()
+        if self._currPolytope.get_points():
+            self.parent.set_status('lcol')
+
+    def set_lightintensity(self, lightIntensity):
+        """Change the light intensity. Takes any number between 0 and 3."""
+        self._lightIntensity = lightIntensity
+        self.render()
+        if self._currPolytope.get_points():
+            self.parent.set_status('lint')
 
     def _view(self, points):
 
@@ -709,9 +731,13 @@ class Canvas(tk.Canvas):
         if event == 'view':
             return ', '.join([str(float(int(self._viewAxis[i]*100)/100))
                               for i in range(3)])   # Converts 1.5708 to 1.57
-        if event == 'light':
+        if event == 'laxis':
             return ', '.join([str(float(int(self._lightAxis[i]*100)/100))
                               for i in range(3)])
+        if event == 'lcol':
+            return ', '.join([str(self._lightColour[i]) for i in range(3)])
+        if event == 'lint':
+            return str(self._lightIntensity)
         if event == 'rot':
             u = ', '.join([str(float(int(self.rotAxis[0][i]*100)/100))
                            for i in range(4)])
@@ -773,14 +799,34 @@ class Canvas(tk.Canvas):
                 return ValueError
 
         # Set light position
-        elif entry.startswith('l'):
+        elif entry.startswith('la'):
             try:
-                lightAxis = [float(num) for num in entry[1:].split(',')]
+                lightAxis = [float(num) for num in entry[2:].split(',')]
                 if len(lightAxis) < 3:
                     lightAxis.append(pi/2)
                 if len(lightAxis) != 3:
                     return ValueError
                 self.set_lightaxis(lightAxis)
+                return
+            except:
+                return ValueError
+
+        elif entry.startswith('lc'):
+            try:
+                lightColour = [int(num) for num in entry[2:].split(',')]
+                if len(lightColour) != 3:
+                    return ValueError
+                self.set_lightcolour(lightColour)
+                return
+            except:
+                return ValueError
+
+        elif entry.startswith('li'):
+            try:
+                lightIntensity = float(entry[2:])
+                if lightIntensity < 0 or lightIntensity > 3:
+                    return ValueError
+                self.set_lightintensity(lightIntensity)
                 return
             except:
                 return ValueError
@@ -1361,10 +1407,12 @@ class Canvas(tk.Canvas):
                       self._view(self._currPolytope.get_points())]
             # As the camera moves away, the light source moves the same distance
             camera = convert([self.parent.distance.get()] + self._viewAxis,True)
-            light = convert([self.parent.distance.get()] + self._lightAxis,True)
+            laxis = convert([self.parent.distance.get()] + self._lightAxis,True)
+            lint = self._lightIntensity
+            lcol = self._lightColour
 
             if self.parent.wire.get() == 0:     # Display by drawing polygons
-                self._currPolytope.shade_faces(light)
+                self._currPolytope.light_faces(laxis, lint, lcol)
                 faces = self._currPolytope.get_faces()
                 centres = self._currPolytope.get_face_centres()
                 colours = self._currPolytope.get_face_colours()
@@ -1408,6 +1456,8 @@ class Canvas(tk.Canvas):
         self.set_rotax('xw')
         self.set_viewaxis([0, 0, pi/2])
         self.set_lightaxis([0, 0, pi/2])
+        self.set_lightcolour([255,255,255])
+        self.set_lightintensity(1)
         self.parent.change('reset')
         if self.get_data('star') == 1:
             self.parent.change('wire')
@@ -1422,7 +1472,7 @@ class Polytope():
     Drawing class that stores vertex coordinates and manages rotations.
 
     Public methods:
-    shade_faces
+    light_faces
     get_points
     get_edges
     get_faces
@@ -1713,9 +1763,25 @@ class Polytope():
                 self._faces.pop(i)
                 self._faceCentres.pop(i)
 
-    def shade_faces(self, axis):
+    def light_faces(self, axis, intensity, colours):
+        """
+        Light faces by shading them according to their angle with the light ray
+        and then applying the intensity and colour of the light source.
+        """
+        shades = self._shade_faces(axis)
+        if len(self._faces) == 1:
+            for j in range(3):  # Shade both faces if polygon by using abs()
+                self._faceColours[0][j] = abs(self._baseColours[0][j] * shades)
+        else:
+            for i in range(len(self._faces)):
+                for j in range(3):  # Average of base and intensity of light
+                    colour = (self._baseColours[i][j] + colours[j] * intensity)\
+                             * shades[i] * intensity / 2
+                    self._faceColours[i][j] = max(0, min(255, colour))
+
+    def _shade_faces(self, axis): 
         """Shade according to the angle between the light ray and the normal."""
-        if len(self._faces) == 1:   # Shade both faces if polygon by using abs()
+        if len(self._faces) == 1:
             light = [axis[i] - self._faceCentres[0][i] for i in range(3)]
             a = self._points[self._faces[0][0]]
             b = self._points[self._faces[0][1]]
@@ -1723,21 +1789,18 @@ class Polytope():
             u = [a[i] - b[i] for i in range(3)]
             v = [b[i] - c[i] for i in range(3)]
             normal = cross3D(u, v)        # self._centres[0] = [0,0,0,0]
-            denominator = math.sqrt(abs(distance(normal) * distance(light)))
-            cosine = sum([light[i]*normal[i]/denominator for i in range(3)])
-            for i in range(3):
-                shade = self._baseColours[0][i]
-                self._faceColours[0][i] = abs(shade * cosine)
+            denom = math.sqrt(abs(distance(normal) * distance(light)))
+            shade = sum([light[i]*normal[i]/denom for i in range(3)])
+            return shade
         else:
+            shades = []
             for face in self._faces:
                 light = [axis[i] - self._faceCentres[face][i] for i in range(3)]
                 normal = self._faceCentres[face]
-                denominator = math.sqrt(abs(sum([x**2 for x in normal])
-                                            * sum([x**2 for x in light])))
-                cosine = sum([light[i]*normal[i]/denominator for i in range(3)])
-                for i in range(3): # Lambert's cosine law for diffuse reflectors
-                    shade = self._baseColours[face][i]  # Positive, not brighter
-                    self._faceColours[face][i] = max(0, shade * cosine)
+                denom = math.sqrt(abs(sum([x**2 for x in normal]) *
+                                      sum([x**2 for x in light])))
+                shades.append(sum([light[i]*normal[i]/denom for i in range(3)]))
+            return shades
 
     def get_points(self):
         """Return a list of points of the polytope."""
