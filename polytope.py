@@ -1,22 +1,23 @@
 """
-Polyhedron Shader v0.77
+Polyhedron Shader v0.78
 
 This program shades convex polyhedra.
-The intensity and colour of light can now be set by text input.
-Calculations only use RGB instead of L*a*b* for convenience,
-so the coloured lighting makes little intuitive sense.
+The colours of vertices, lines, faces, the sphere, and menus
+can now be set by modifying the COLOURS constant.
+Colours in the polytope are represented by integers that assign
+a number to each object; each number is later mapped to a colour.
+Everything that controls light, and colour, are in single functions.
 """
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
 import random
 
-TITLE = 'Polyhedron Shader v0.77'
+TITLE = 'Polyhedron Shader v0.78'
 DESCRIPTION = '\nThis script displays shaded polyhedra.'
 pi = math.pi
 WIDTH = 600
 HEIGHT = 550
-BGCOLOUR = '#CCC'
 RADIUS = 100
 ZOOM = 50
 RETINA = 10
@@ -29,6 +30,13 @@ SNUBABLE = (['2', '3', '3'], ['2', '3', '4'], ['2', '3', '5'],
             ['2', '3', '5/3'], ['2', '3/2', '3/2'], ['2', '3/2', '4'],
             ['2', '3/2', '4/3'], ['2', '3/2', '5/3'], ['2', '5', '5/2'],
             ['2', '5', '5/3'], ['3', '5', '5/3'], ['3/2', '4', '4'])
+COLOURS = [('#000', '#F00', '#00F'),
+           ('#EEE', '#BBB', '#999', '#666', '#333', '#000'), 
+           {3:'#719', 4:'#1B1', 5:'#04D', 6:'#F8C', 7:'#630', 8:'#E00', 9:'#9DF',
+           10:'#098', 11:'#F70', 12:'#9F7', 13:'#C07', 14:'#FF1', 15:'#7BF',
+           16:'#999', 17:'#8F0', 18:'#B7F', 19:'#90E', 20:'#030', 21:'#0CA'},
+           ('#FD9', '#F00', '#0F0', '#00F'), '#CCC']
+
 
 def distance(head, tail=[0,0,0,0]):
     """Return the distance squared between two points."""
@@ -156,10 +164,10 @@ class Main(ttk.Frame):
         self._downBtn = tk.PhotoImage(file='downButtonEleven.gif')
 
         style = ttk.Style()
-        style.configure('TFrame', background=BGCOLOUR)
-        style.configure('TLabel', background=BGCOLOUR)
-        style.configure('TButton', background=BGCOLOUR)
-        style.configure('TCheckbutton', background=BGCOLOUR)
+        style.configure('TFrame', background=COLOURS[4])
+        style.configure('TLabel', background=COLOURS[4])
+        style.configure('TButton', background=COLOURS[4])
+        style.configure('TCheckbutton', background=COLOURS[4])
 
         # Grid main widget frames
 
@@ -381,10 +389,10 @@ class Main(ttk.Frame):
             frameHeight = 120
 
         # Create pop-up window, each with title, message, and close button
-        _popUpFrame = tk.Toplevel(self.parent, background=BGCOLOUR)
+        _popUpFrame = tk.Toplevel(self.parent, background=COLOURS[4])
         _popUpFrame.title(titleText)
         _popUpMessage = tk.Message(_popUpFrame, text=messageText,
-                                   width=frameWidth, background=BGCOLOUR)
+                                   width=frameWidth, background=COLOURS[4])
         _popUpMessage.pack()
         _popUpButton = ttk.Button(_popUpFrame, text=buttonText,
                                   command=_popUpFrame.destroy)
@@ -538,9 +546,8 @@ class Canvas(tk.Canvas):
 
     Public methods:
     set_viewaxis
-    set_lightaxis
-    set_lightcolour
-    set_lightintensity
+    set_light
+    set_colours
     set_rotax
     set_select
     rotate
@@ -580,36 +587,57 @@ class Canvas(tk.Canvas):
         if self._currPolytope.get_points():
             self.parent.set_status('view')
 
-    def set_lightaxis(self, lightAxis):
-        """Change the light position. Takes hyperspherical axis coordinates."""
-        # Check that inputs satisfy restrictions
-        for n in range(3):
-            while lightAxis[n] >= 2*pi:
-                lightAxis[n] -= 2*pi
-            while lightAxis[n] < 0:
-                lightAxis[n] += 2*pi
-        if lightAxis[2] > pi:
-            lightAxis[2] = 2*pi - lightAxis[2]
-        if lightAxis[1] > pi:
-            lightAxis[1] = 2*pi - lightAxis[2]
-        self._lightAxis = (lightAxis)
-        self.render()
-        if self._currPolytope.get_points():
-            self.parent.set_status('laxis')
+    def set_light(self, laxis=None, lcol=None, lint=None):
+        """
+        Change properties of the lighting, including:
+        changing the light position, taking hyperspherical axis coordinates;
+        changing the light colour, taking RGB integer values;
+        changing the light intensity, taking any number between 0 and 3;
+        """
+       
+        if laxis:
+            for n in range(3):
+                while laxis[n] >= 2*pi:
+                    laxis[n] -= 2*pi
+                while laxis[n] < 0:
+                    laxis[n] += 2*pi
+            if laxis[2] > pi:
+                laxis[2] = 2*pi - laxis[2]
+            if laxis[1] > pi:
+                laxis[1] = 2*pi - laxis[2]
+            self._lightAxis = (laxis)
+            if self._currPolytope.get_points():
+                self.parent.set_status('laxis')
 
-    def set_lightcolour(self, lightColour):
-        """Change the light colour. Takes RGB values."""
-        self._lightColour = (lightColour)
+        if lcol:
+            self._lightColour = (lcol)
+            if self._currPolytope.get_points():
+                self.parent.set_status('lcol')
+        
+        if lint:
+            self._lightIntensity = lint
+            if self._currPolytope.get_points():
+                self.parent.set_status('lint')
         self.render()
-        if self._currPolytope.get_points():
-            self.parent.set_status('lcol')
 
-    def set_lightintensity(self, lightIntensity):
-        """Change the light intensity. Takes any number between 0 and 3."""
-        self._lightIntensity = lightIntensity
+    def set_colours(self,vcol=None, ecol=None, bcol=None, scol=None, mcol=None):
+        """
+        Change colours of various objects, including:
+        the colours of vertices and edges in wireframe mode, as lists;
+        the colours of different types of polygonal faces, as a dict;
+        the colours of the radial sphere as a list and the bg as an int.
+        """
+        if vcol:
+            self._vertexColours = (vcol)
+        if ecol:
+            self._edgeColours = (ecol)
+        if bcol:
+            self._baceColours = bcol
+        if scol:
+            self._sphereColours = (scol)
+        if mcol:
+            self._menuColours = mcol
         self.render()
-        if self._currPolytope.get_points():
-            self.parent.set_status('lint')
 
     def _view(self, points):
 
@@ -806,7 +834,7 @@ class Canvas(tk.Canvas):
                     lightAxis.append(pi/2)
                 if len(lightAxis) != 3:
                     return ValueError
-                self.set_lightaxis(lightAxis)
+                self.set_light(laxis=lightAxis)
                 return
             except:
                 return ValueError
@@ -816,7 +844,7 @@ class Canvas(tk.Canvas):
                 lightColour = [int(num) for num in entry[2:].split(',')]
                 if len(lightColour) != 3:
                     return ValueError
-                self.set_lightcolour(lightColour)
+                self.set_light(lcol=lightColour)
                 return
             except:
                 return ValueError
@@ -826,7 +854,7 @@ class Canvas(tk.Canvas):
                 lightIntensity = float(entry[2:])
                 if lightIntensity < 0 or lightIntensity > 3:
                     return ValueError
-                self.set_lightintensity(lightIntensity)
+                self.set_light(lint=lightIntensity)
                 return
             except:
                 return ValueError
@@ -931,7 +959,7 @@ class Canvas(tk.Canvas):
         phis = [pi/2]*p
         omegas = [pi/2]*p
         edges = [(k,(k+1)%p) for k in range(p)]
-        colours = [(k,'#000') for k in range(p)]
+        colours = [(k,0) for k in range(p)]
         points = []
         points.extend([convert((rs[n], thetas[n], phis[n], omegas[n]), True)
                        for n in range(len(thetas))])
@@ -1018,10 +1046,10 @@ class Canvas(tk.Canvas):
         points = []
         points.extend([convert((rs[n], thetas[n], phis[n], omegas[n]), True)
                       for n in range(len(thetas))])
-        colours = [(k, '#000') for k in range(len(thetas))]
+        colours = [(k, 0) for k in range(len(thetas))]
         return points, edges, colours
 
-    def _wythoff(self, entry='', selection='a', colour='#000'):
+    def _wythoff(self, entry='', selection='a'):
 
         # Take Wythoff symbol and return its spherical coordinates.
 
@@ -1116,13 +1144,13 @@ class Canvas(tk.Canvas):
             n = cross3D(mq, ns, [r]) + [0.0]
         elif selection == 'p':
             n = triangles[0][0]
-            colour = '#F00'
+            colour = 0
         elif selection == 'q':
             n = triangles[0][1]
-            colour = '#000'
+            colour = 1
         elif selection == 's':
             n = triangles[0][2]
-            colour = '#00F'
+            colour = 2
         elif selection == 'pq':
             # Find length on great circle pq
             pn = math.atan2(math.sin(lsp), (
@@ -1166,7 +1194,7 @@ class Canvas(tk.Canvas):
             n = 2
             while n < len(points):
                 edges += [(n-2,n-1), (n-2,n), (n-1,n)]
-                colours += [(n-2, '#F00'), (n-1, '#000'), (n, '#00F')]
+                colours += [(n-2, 0), (n-1, 1), (n, 2)]
                 n += 3
         else:
             for n in range(len(points)):
@@ -1174,7 +1202,7 @@ class Canvas(tk.Canvas):
                     if abs(sum([(points[n][t]-points[k][t])**2
                                 for t in range(3)]) - side) < 2:
                         edges.append((n,k))
-            colours = [(k, colour) for k in range(len(points))]
+            colours = [(k, 0) for k in range(len(points))]
         return points, edges, colours
 
     def _schwarz(self, selection, triangles, n):
@@ -1394,12 +1422,12 @@ class Canvas(tk.Canvas):
             edges = self._sphere.get_edges()
             for edge in edges:
                 self.create_line(points[edge[0]], points[edge[1]],
-                                 fill='#FD9', width=1)
+                                 fill=COLOURS[3][0], width=1)
             axes = [(-point[0]+w, point[1]+h) for point in
                     self._view(self._sphere.get_axes())]
-            self.create_line(axes[0],axes[1], fill='#F00', width=5)
-            self.create_line(axes[2],axes[3], fill='#0F0', width=5)
-            self.create_line(axes[4],axes[5], fill='#00F', width=5)
+            self.create_line(axes[0],axes[1], fill=COLOURS[3][1], width=5)
+            self.create_line(axes[2],axes[3], fill=COLOURS[3][2], width=5)
+            self.create_line(axes[4],axes[5], fill=COLOURS[3][3], width=5)
 
         if self._currPolytope.get_points():
             self.parent.set_status('faces')
@@ -1412,19 +1440,39 @@ class Canvas(tk.Canvas):
             lcol = self._lightColour
 
             if self.parent.wire.get() == 0:     # Display by drawing polygons
-                self._currPolytope.light_faces(laxis, lint, lcol)
                 faces = self._currPolytope.get_faces()
+                shades = self._currPolytope.get_shades(laxis)
                 centres = self._currPolytope.get_face_centres()
-                colours = self._currPolytope.get_face_colours()
+                sideTypes = self._currPolytope.get_faces_by_side()
                 distances = {}
+                if len(faces) == 1:
+                    hexcol = COLOURS[2][sideTypes[0]]
+                    colour = []
+                    for i in range(3):
+                        deccol = int(hexcol[1+i], 16)
+                        col = (deccol*16 + lcol[i] * lint)/2 * shades[0] * lint
+                        color = abs(col)    # Shade both faces if polygon by using abs()
+                        colour.append(format(int(color), '02x'))
+                    rgb = '#' + ''.join(colour)
+                    edges = [points[side] for side in faces[0]]
+                    self.create_polygon(edges,outline=COLOURS[1][5],width=3,fill=rgb)
+                    return
                 for face in faces:
                     distances[face] = distance(centres[face], camera)
                 order = sorted(distances, key=distances.get, reverse=True)
-                for face in order:
-                    colour = [format(int(num), '02x') for num in colours[face]]
+                for face in order:              # Colour the faces
+                    hexcol = COLOURS[2][sideTypes[face]]
+                    colour = []
+                    for i in range(3):
+                        deccol = int(hexcol[1+i], 16)
+                        # Convert hex to dec, then get average of base and lint
+                        col = (deccol*16 + lcol[i] * lint)/2 * shades[face] * lint
+                        color = max(0, min(255, col))    # Take middle number
+                        colour.append(format(int(color), '02x'))
                     rgb = '#' + ''.join(colour)
                     edges = [points[side] for side in faces[face]]
-                    self.create_polygon(edges,outline='#000',width=3,fill=rgb)
+                    self.create_polygon(edges,outline=COLOURS[1][5],width=3,
+                                        fill=rgb)
 
             elif self.parent.wire.get() == 1:   # Display by drawing lines
                 edges = self._currPolytope.get_edges()
@@ -1433,31 +1481,28 @@ class Canvas(tk.Canvas):
                 for colour in colours:
                     self.create_oval([p-5 for p in points[colour[0]]],
                                      [p+5 for p in points[colour[0]]],
-                                     fill=colour[1])
-
+                                     fill=COLOURS[0][colour[1]])
                 distances = {}
                 for i in range(len(edges)):
                     distances[i] = distance(centres[i], camera)
                 order = sorted(distances, key=distances.get, reverse=True)
                 quintile = 0            # Group edges into distance quintiles
                 fifth = len(order)/5
-                greys = ['#EEE', '#BBB', '#999', '#666', '#333', '#000']
                 count = 0
                 for e in order:
                     if count >= quintile*fifth:
                         quintile += 1
                     count += 1
                     self.create_line(points[edges[e][0]], points[edges[e][1]],
-                                     fill=greys[quintile], width=quintile)
+                                     fill=COLOURS[1][quintile], width=quintile)
 
     def _reset(self):
         self.delete(tk.ALL)
         self._sphere = Sphere(SPHERENUM, RADIUS)
         self.set_rotax('xw')
         self.set_viewaxis([0, 0, pi/2])
-        self.set_lightaxis([0, 0, pi/2])
-        self.set_lightcolour([255,255,255])
-        self.set_lightintensity(1)
+        self.set_light([0,0,pi/2], [255,255,255], 1)
+        self.set_colours(COLOURS)
         self.parent.change('reset')
         if self.get_data('star') == 1:
             self.parent.change('wire')
@@ -1472,15 +1517,15 @@ class Polytope():
     Drawing class that stores vertex coordinates and manages rotations.
 
     Public methods:
-    light_faces
     get_points
     get_edges
     get_faces
     get_face_sides
+    get_faces_by_side
     get_edge_centres
     get_face_centres
     get_point_colours
-    get_face_colours
+    get_shades
     set_rotax
     rotate
 
@@ -1497,7 +1542,6 @@ class Polytope():
             self._set_faces()
             self._set_edge_centres()
             self._set_face_centres()
-            self._set_colours()
             if len(self._faces)/len(self._points) < 1/3:
                 # Not enough faces, probably because of canvas._wythoff_snub
                 self.star = False
@@ -1510,10 +1554,9 @@ class Polytope():
             self._edges = []
             self._faces = []
             self._faceSides = []
-            self._pointColours = []
-            self._faceColours = []
             self._edgeCentres = []
             self._faceCentres = []
+            self._pointColours = []
 
     def _set_faces(self):
         """Create a dictionary of faces using only a list of edges."""
@@ -1523,6 +1566,7 @@ class Polytope():
             self._graph.setdefault(edge[1], list()).append(edge[0])
         self._faces = {}
         self._faceSides = {i:[] for i in range(3,21)}   # 13 to 20 are stars
+        self._faceTypes = {}        # Stores the number of sides of each face
         self._visited = set()
         self._triangles = set()
         i = 3           # Iterate across all polygon side numbers
@@ -1533,11 +1577,14 @@ class Polytope():
                     faces = self._bfs(j, start, i)
                     if faces:       # At most two faces can go from start to j
                         for face in faces:
+                            n = len(self._faces)
                             if self._has_star(face) == True:
-                                self._faceSides[i+10].append(len(self._faces))
+                                self._faceSides[i+10].append(n)
+                                self._faceTypes[n] = i+10
                             else:
-                                self._faceSides[i].append(len(self._faces))
-                            self._faces[len(self._faces)] = face
+                                self._faceSides[i].append(n)
+                                self._faceTypes[n] = i
+                            self._faces[n] = face
                 j += 1
             i += 1
 
@@ -1691,19 +1738,6 @@ class Polytope():
             for i in range(4):
                 self._faceCentres[face][i] /= len(self._faces[face])
 
-    def _set_colours(self):
-        """Create a dictionary of colours applied to each type of face."""
-        self._baseColours = {}
-        self._faceColours = {}
-        for i in range(3,21):
-            r = random.randint(0,255)
-            g = random.randint(0,255)
-            b = random.randint(0,255)
-            if len(self._faceSides[i]) > 0:
-                for j in self._faceSides[i]:
-                    self._baseColours[j] = [r,g,b]
-                    self._faceColours[j] = [r,g,b]
-
     def _remove_faces(self):
         """Remove extraneous faces, depending on polytope characteristics."""
         number = sum([len(self._faceSides[i]) for i in range(3,21)])
@@ -1763,45 +1797,6 @@ class Polytope():
                 self._faces.pop(i)
                 self._faceCentres.pop(i)
 
-    def light_faces(self, axis, intensity, colours):
-        """
-        Light faces by shading them according to their angle with the light ray
-        and then applying the intensity and colour of the light source.
-        """
-        shades = self._shade_faces(axis)
-        if len(self._faces) == 1:
-            for j in range(3):  # Shade both faces if polygon by using abs()
-                self._faceColours[0][j] = abs(self._baseColours[0][j] * shades)
-        else:
-            for i in range(len(self._faces)):
-                for j in range(3):  # Average of base and intensity of light
-                    colour = (self._baseColours[i][j] + colours[j] * intensity)\
-                             * shades[i] * intensity / 2
-                    self._faceColours[i][j] = max(0, min(255, colour))
-
-    def _shade_faces(self, axis): 
-        """Shade according to the angle between the light ray and the normal."""
-        if len(self._faces) == 1:
-            light = [axis[i] - self._faceCentres[0][i] for i in range(3)]
-            a = self._points[self._faces[0][0]]
-            b = self._points[self._faces[0][1]]
-            c = self._points[self._faces[0][2]]
-            u = [a[i] - b[i] for i in range(3)]
-            v = [b[i] - c[i] for i in range(3)]
-            normal = cross3D(u, v)        # self._centres[0] = [0,0,0,0]
-            denom = math.sqrt(abs(distance(normal) * distance(light)))
-            shade = sum([light[i]*normal[i]/denom for i in range(3)])
-            return shade
-        else:
-            shades = []
-            for face in self._faces:
-                light = [axis[i] - self._faceCentres[face][i] for i in range(3)]
-                normal = self._faceCentres[face]
-                denom = math.sqrt(abs(sum([x**2 for x in normal]) *
-                                      sum([x**2 for x in light])))
-                shades.append(sum([light[i]*normal[i]/denom for i in range(3)]))
-            return shades
-
     def get_points(self):
         """Return a list of points of the polytope."""
         return self._points
@@ -1818,6 +1813,10 @@ class Polytope():
         """Return a dictionary of numbers of faces with some amount of sides."""
         return self._faceSides
 
+    def get_faces_by_side(self):
+        """Return a dictionary of faces matched with their number of sides."""
+        return self._faceTypes
+
     def get_edge_centres(self):
         """Return a list of centres of the edges of the polytope."""
         return self._edgeCentres
@@ -1830,9 +1829,28 @@ class Polytope():
         """Return a list of colours of the points of the polytope."""
         return self._pointColours
 
-    def get_face_colours(self):
-        """Return a dictionary of colours of the faces of the polytope."""
-        return self._faceColours
+    def get_shades(self, laxis): 
+        """Return the amount of shading needed according to the angle."""
+        if len(self._faces) == 1:
+            light = [laxis[i] - self._faceCentres[0][i] for i in range(3)]
+            a = self._points[self._faces[0][0]]
+            b = self._points[self._faces[0][1]]
+            c = self._points[self._faces[0][2]]
+            u = [a[i] - b[i] for i in range(3)]
+            v = [b[i] - c[i] for i in range(3)]
+            normal = cross3D(u, v)        # self._centres[0] = [0,0,0,0]
+            denom = math.sqrt(abs(distance(normal) * distance(light)))
+            shade = sum([light[i]*normal[i]/denom for i in range(3)])
+            return shade
+        else:
+            shades = []
+            for face in self._faces:
+                light = [laxis[i]-self._faceCentres[face][i] for i in range(3)]
+                normal = self._faceCentres[face]
+                denom = math.sqrt(abs(sum([x**2 for x in normal]) *
+                                      sum([x**2 for x in light])))
+                shades.append(sum([light[i]*normal[i]/denom for i in range(3)]))
+            return shades
 
     def set_rotax(self, axes):
         """Set the perpendicular unit axes of rotation of the polytope."""
