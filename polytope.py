@@ -1,18 +1,17 @@
 """
-Polyhedron Shader v0.79
+Polytope Player v0.80
 
-This program shades convex polyhedra.
-The old arrows from v0.24 are used to avoid overlapping.
-Loops now define tkinter buttons much more compactly than before.
-The comment and function documentation is edited and vastly improved.
+This program lets you play with polytopes!
+Light intensity is now controlled by a sliding scale by Main,
+using change and not using set_status, set_light, nor get_data.
 """
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
 import random
 
-TITLE = 'Polyhedron Shader v0.79'
-DESCRIPTION = '\nThis script displays shaded polyhedra.'
+TITLE = 'Polytope Player v0.80'
+DESCRIPTION = '\nThis script lets you play with polytopes.'
 WIDTH = 600
 HEIGHT = 550
 pi = math.pi
@@ -174,6 +173,7 @@ class Main(ttk.Frame):
     statusText          To display the current status (tk.StringVar)
     inputText           To display the current input (tk.StringVar)
     bBrBtn              To allow the button to be disabled (ttk.Button)
+    lint                To keep track of light intensity (tk.DoubleVar)
     sphere              To keep track of sphere check (tk.IntVar)
     wire                To keep track of wire check (tk.IntVar)
     wireCheck           To allow the check to be disabled (ttk.Checkbutton)
@@ -293,7 +293,6 @@ class Main(ttk.Frame):
         style.configure('TButton', background=COLOURS[4][0])
         style.configure('TCheckbutton', background=COLOURS[4][0])
 
-
         # Grid main widget frames
         # Title on top, canvas and guiRight on middle, guiBottom on bottom
 
@@ -313,7 +312,7 @@ class Main(ttk.Frame):
                         padx=10, pady=(0,20), sticky=tk.E+tk.W)
 
 
-        # Grid guiRight widgets: 8 rows, 3 columns
+        # Grid guiRight widgets: 12 rows, 3 columns
 
         # Grid rotate label, 2 rotate buttons, and 6 rotation axis buttons
         rotateLabel = ttk.Label(guiRight, text='Rotate: ')
@@ -357,6 +356,17 @@ class Main(ttk.Frame):
                            command=lambda c=c: self.canvas.set_bar(c))
             b.bind('<Key-Return>', lambda event,c=c: self.canvas.set_bar(c))
             b.grid(row=int(5+i/3), column=i%3)
+
+        # Grid light intensity label, scale, and display
+        lintLabel = ttk.Label(guiRight, text='Light Intensity: ')
+        lintLabel.grid(row=9, column=0, columnspan=3)
+        self.lint = tk.DoubleVar()
+        lintDisplay = ttk.Label(guiRight, textvariable=self.lint)
+        lintDisplay.grid(row=10, column=1)
+        lintScale = ttk.Scale(guiRight, orient=tk.VERTICAL,
+                              variable=self.lint, from_=0, to=2,
+                              command=lambda event: self.change('s'))
+        lintScale.grid(row=11, column=1)
 
 
         # Grid guiBottom widgets: 5 rows, 7 columns
@@ -452,7 +462,7 @@ class Main(ttk.Frame):
         Display status changes on the status bar.
         event: the type of status change (str)
                'clear', 'badinput', 'view', 'rot',
-               'laxis', 'lcol', 'lint', 'faces'
+               'laxis', 'lcol', 'faces'
         """
         if event == 'clear':
             self.statusText.set('')
@@ -471,9 +481,6 @@ class Main(ttk.Frame):
         elif event == 'lcol':
             self.statusText.set('New light colour: ' +
                                 self.canvas.get_data('lcol'))
-        elif event == 'lint':
-            self.statusText.set('New light intensity: ' +
-                                self.canvas.get_data('lint'))
         elif event == 'faces':      # Display number and types of faces
             faceText = ''
             faces = self.canvas.get_data('faces')
@@ -488,18 +495,23 @@ class Main(ttk.Frame):
         """
         Change GUI values (checkboxes, zoom, distance) and re-render.
         change: the type of change to make (str)
-                's', 'w', 'r', 'z', 'z+', 'z-', 'd', 'd+', 'd-'
+                'b', 'w', 's', 'r', 'z', 'z+', 'z-', 'd', 'd+', 'd-'
         value: the value to change to (float), default 0
         """
         if change == None:      # When checkboxes are ticked, just re-render
             pass
-        elif change == 's':     # Disable bBrBtn if polyhedron has no snub
+        elif change == 'b':     # Disable bBrBtn if polyhedron has no snub
             self.bBrBtn.config(state=tk.DISABLED)
         elif change == 'w':     # Disable wireCheck if camera too close
             self.wire.set(1)
             self.wireCheck.config(state=tk.DISABLED)
+        elif change == 's':     # Round scale labels to two decimal places
+            self.lint.set(round(self.lint.get(), 2))
+        elif change == 'li':
+            self.lint.set(round(value, 2))
         elif change == 'r':     # Reset to initial states
             try:                # Canvas initializes before zoom
+                self.lint.set(1)
                 self.zoom.set(ZOOM) # Set initial zoom to ZOOM
                 self.unitDist = 20  # Set initial distance to 20 from max
                 # unitDist changes by one per button press, between 1 and 100
@@ -592,7 +604,6 @@ class Canvas(tk.Canvas):
     _noSnub             To keep track of if the snub does not exist (bool)
     _lightAxis          The current light axis (list)
     _lightColour        The current light colour (list)
-    _lightIntensity     The current light intensity (float)
     _vertexColours      The colour of vertices in wire mode (list)
     _edgeColours        The colour of edges in wire mode (list)
     _baseColours        The colour of polygonal faces (dict)
@@ -615,13 +626,12 @@ class Canvas(tk.Canvas):
         self._noSnub = 0
         self._reset()
 
-    def set_light(self, laxis=None, lcol=None, lint=None):
+    def set_light(self, laxis=None, lcol=None):
         """
         Change properties of the lighting and re-render.
 
         laxis: the light axis in spherical coordinates (list, len=4)
         lcol: the light colour in RGB integers between 0 and 255 (list, len=3)
-        lint: the light intensity, between 0 and 3 (float), all defaults None
         """
         if laxis != None:
             self._lightAxis = satisfy_axis_restrictions(laxis)
@@ -631,10 +641,6 @@ class Canvas(tk.Canvas):
             self._lightColour = lcol
             if self._hasPolytope:
                 self.parent.set_status('lcol')
-        if lint != None:    # Compare against None in case lint = 0
-            self._lightIntensity = lint
-            if self._hasPolytope:
-                self.parent.set_status('lint')
         self.render()
 
     def set_colours(self,vcol=None,ecol=None,bcol=None,scol=None,mcol=None):
@@ -723,7 +729,7 @@ class Canvas(tk.Canvas):
         """
         Return data about the current polytope.
         event: the type of data to return (str)
-               'view', 'laxis', 'lcol', 'lint', 'rot', 'faces', 'star'
+               'view', 'laxis', 'lcol', 'rot', 'faces', 'star'
         return: some data to put on the status bar (str)
         """
         if event == 'view':
@@ -734,8 +740,6 @@ class Canvas(tk.Canvas):
                               for i in range(3)])
         if event == 'lcol':
             return ', '.join([str(self._lightColour[i]) for i in range(3)])
-        if event == 'lint':
-            return str(self._lightIntensity)
         if event == 'rot':
             u = ', '.join([str(round(self.rotAxis[0][i],2))
                            for i in range(4)])
@@ -836,10 +840,10 @@ class Canvas(tk.Canvas):
 
         elif entry.startswith('li'):            # Set light intensity
             try:
-                lightIntensity = float(entry[2:])
-                if lightIntensity < 0 or lightIntensity > 3:
+                lint = float(entry[2:])
+                if lint < 0 or lint > 2:
                     return ValueError
-                self.set_light(lint=lightIntensity)
+                self.parent.change('li', lint)
                 return
             except:
                 return ValueError
@@ -1540,7 +1544,7 @@ class Canvas(tk.Canvas):
         # As the camera moves away, the light source moves the same distance
         camera = convert([self.parent.dist.get()] + self._viewAxis,True)
         laxis = convert([self.parent.dist.get()] + self._lightAxis,True)
-        lint = self._lightIntensity
+        lint = self.parent.lint.get()
         lcol = self._lightColour
 
         # Display by drawing polygons in normal mode
@@ -1553,13 +1557,16 @@ class Canvas(tk.Canvas):
 
             # If the polytope is a single polygon, both sides should be shaded
             if len(faces) == 1:
-                hexcol = COLOURS[2][sideTypes[0]]
+                hexcol = COLOURS[2][sideTypes[0]]   # Get polygon base colour
                 colour = []
                 for i in range(3):
-                    deccol = int(hexcol[1+i], 16)
-                    # Convert hex to dec, then get average of base and lint
+                    deccol = int(hexcol[1+i], 16)   # Convert hex to dec
+                    # Multiply deccol (0-15) by 16, since lcol is (0-255)
+                    # Average base colour and light colour times intensity
+                    # Then multiply result by shade and intensity again
                     col = (deccol*16 + lcol[i] * lint)/2 * shades * lint
-                    color = abs(col)    # Shades both sides of the polygon
+                    # Use min and abs so that result is positive and under 255
+                    color = min(255, abs(col))
                     colour.append(format(int(color), '02x'))
                 rgb = '#' + ''.join(colour)
                 edges = [points[side] for side in faces[0]]
@@ -1577,7 +1584,7 @@ class Canvas(tk.Canvas):
                 for i in range(3):
                     deccol = int(hexcol[1+i], 16)
                     col = (deccol*16 + lcol[i] * lint)/2 * shades[face] * lint
-                    color = max(0, min(255, col))    # Take middle number
+                    color = max(0, min(255, col))   # Result between 0 and 255
                     colour.append(format(int(color), '02x'))
                 rgb = '#' + ''.join(colour)
                 edges = [points[side] for side in faces[face]]
@@ -1617,12 +1624,12 @@ class Canvas(tk.Canvas):
         # Default settings
         self.set_rotax('xw')
         self.set_view([0, 0, pi/2])
-        self.set_light([0, 0, pi/2],[255,255,255],1)
+        self.set_light([0, 0, pi/2],[255,255,255])
         self.parent.change('r')
         if self.get_data('star') == 1:
             self.parent.change('w')
         if self._noSnub == 1:
-            self.parent.change('s')
+            self.parent.change('b')
 
 
 
