@@ -1,18 +1,15 @@
 """
-Polytope Player v0.81
+Polytope Player v0.82
 
 This program lets you play with polytopes!
-The light position axes are now controlled by a sliding scale,
-in exactly the same way that light intensity was changed last.
-The scale display now supports text entry to change variables,
-format strings format them, and _valid validates them all too.
+All IntVars that were supposed to be booleans are now BooleanVars.
 """
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
 import random
 
-TITLE = 'Polytope Player v0.81'
+TITLE = 'Polytope Player v0.82'
 DESCRIPTION = '\nThis script lets you play with polytopes.'
 WIDTH = 600
 HEIGHT = 550
@@ -179,8 +176,8 @@ class Main(ttk.Frame):
     ltheta              To keep track of light theta position (tk.DoubleVar)
     lphi                To keep track of light phi position (tk.DoubleVar)
     lomega              To keep track of light omega position (tk.DoubleVar)
-    sphere              To keep track of sphere check (tk.IntVar)
-    wire                To keep track of wire check (tk.IntVar)
+    sphere              To keep track of sphere check (tk.BooleanVar)
+    wire                To keep track of wire check (tk.BooleanVar)
     wireCheck           To allow the check to be disabled (ttk.Checkbutton)
     zoom                To keep track of the current zoom (tk.IntVar)
     dist                To keep track of the current distance (tk.IntVar)
@@ -398,12 +395,12 @@ class Main(ttk.Frame):
         inputBox.focus()    # Put initial keyboard focus on inputBox
 
         # Grid 2 checkbuttons for toggling sphere and wireframe
-        self.sphere = tk.IntVar()
+        self.sphere = tk.BooleanVar()
         sphereCheck = ttk.Checkbutton(guiBottom, text='Sphere',
                                       variable=self.sphere,
                                       command=lambda: self.change())
         sphereCheck.grid(row=2, column=0, sticky=tk.W)
-        self.wire = tk.IntVar()
+        self.wire = tk.BooleanVar()
         self.wireCheck = ttk.Checkbutton(guiBottom, text='Wireframe',
                                          variable=self.wire,
                                          command=lambda: self.change())
@@ -530,7 +527,7 @@ class Main(ttk.Frame):
         elif change == 'b':     # Disable bBrBtn if polyhedron has no snub
             self.bBrBtn.config(state=tk.DISABLED)
         elif change == 'w':     # Disable wireCheck if camera too close
-            self.wire.set(1)
+            self.wire.set(True)
             self.wireCheck.config(state=tk.DISABLED)
         elif change == 's':     # Round scale labels to two decimal places
             for s in (self.lint, self.ltheta, self.lphi):
