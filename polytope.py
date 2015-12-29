@@ -1,15 +1,18 @@
 """
-Polytope Player v0.82
+Polytope Player v0.83
 
 This program lets you play with polytopes!
-All IntVars that were supposed to be booleans are now BooleanVars.
+only3D now toggles an only-3D mode, which disables 4D functions,
+such as view from the w-axis and rotation not about the w-axis.
+Outside of only-3D mode, the wireframe mode is permanently on.
+But polychora are (and should not be) shaded in only-3D mode!
 """
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
 import random
 
-TITLE = 'Polytope Player v0.82'
+TITLE = 'Polytope Player v0.83'
 DESCRIPTION = '\nThis script lets you play with polytopes.'
 WIDTH = 600
 HEIGHT = 550
@@ -171,7 +174,9 @@ class Main(ttk.Frame):
     statusLabel         To allow statusText to clear itself (ttk.Label)
     statusText          To display the current status (tk.StringVar)
     inputText           To display the current input (tk.StringVar)
-    bBrBtn              To allow the button to be disabled (ttk.Button)
+    rotBtns             To allow the buttons to be disabled (list)
+    barBtns                 all elements are ttk.Buttons
+    viewBtns
     lint                To keep track of light intensity (tk.DoubleVar)
     ltheta              To keep track of light theta position (tk.DoubleVar)
     lphi                To keep track of light phi position (tk.DoubleVar)
@@ -179,6 +184,7 @@ class Main(ttk.Frame):
     sphere              To keep track of sphere check (tk.BooleanVar)
     wire                To keep track of wire check (tk.BooleanVar)
     wireCheck           To allow the check to be disabled (ttk.Checkbutton)
+    only3D              To know if only 3D mode is on (tk.BooleanVar)
     zoom                To keep track of the current zoom (tk.IntVar)
     dist                To keep track of the current distance (tk.IntVar)
     unitDist            To change dist depending on the distance (int)
@@ -334,31 +340,27 @@ class Main(ttk.Frame):
         rightRotBtn.grid(row=1, column=1, columnspan=2, sticky=tk.E)
 
         # Loop through buttons and grid them in 2 rows, 3 columns
-        rotBtns = ['xw', 'yw', 'zw', 'xy', 'yz', 'xz']
-        for i,t in enumerate(rotBtns):
+        self.rotBtns = ['xw', 'yw', 'zw', 'xy', 'yz', 'xz']
+        for i,t in enumerate(self.rotBtns):
             # Use default variable to ensure lambdas have different arguments
             b = ttk.Button(guiRight, text=t, width=5,
                            command=lambda t=t: self.canvas.set_rotax(t))
             b.bind('<Key-Return>', lambda event,t=t: self.canvas.set_rotax(t))
             b.grid(row=int(2+i/3), column=i%3)
+            self.rotBtns[i] = b     # Replace text with actual buttons
 
         # Grid Wythoff label and 9 Wythoff bar buttons
         wythoffLabel = ttk.Label(guiRight, text='Wythoff: ')
         wythoffLabel.grid(row=4, column=0, columnspan=3, pady=(20,0))
-        barBtns = [('(pqs)', 'a'), ('(|pqs)', 'b'), ('(pqs|)', 'c'),
-                   ('(p|qs)', 'p'), ('(q|sp)', 'q'), ('(s|pq)', 's'),
-                   ('(pq|s)', 'pq'), ('(qs|p)', 'qs'), ('(sq|q)', 'sp')]
-        self.bBrBtn = ttk.Button(guiRight, text='(|pqs)', width=5,
-                                 command=lambda: self.canvas.set_bar('b'))
-        self.bBrBtn.bind('<Key-Return>',lambda event:self.canvas.set_bar('b'))
-        self.bBrBtn.grid(row=5, column=1)
-        for i,(t,c) in enumerate(barBtns):
-            if i == 1:      # bBrBtn already gridded, since it can change
-                continue
+        self.barBtns = [('(pqs)', 'a'), ('(|pqs)', 'b'), ('(pqs|)', 'c'),
+                        ('(p|qs)', 'p'), ('(q|sp)', 'q'), ('(s|pq)', 's'),
+                        ('(pq|s)', 'pq'), ('(qs|p)', 'qs'), ('(sq|q)', 'sp')]
+        for i,(t,c) in enumerate(self.barBtns):
             b = ttk.Button(guiRight, text=t, width=5,
                            command=lambda c=c: self.canvas.set_bar(c))
             b.bind('<Key-Return>', lambda event,c=c: self.canvas.set_bar(c))
             b.grid(row=int(5+i/3), column=i%3)
+            self.barBtns[i] = b
 
         # Grid light axis and intensity labels, scales, and displays
         lightLabel = ttk.Label(guiRight, text='Light Properties: ')
@@ -405,17 +407,23 @@ class Main(ttk.Frame):
                                          variable=self.wire,
                                          command=lambda: self.change())
         self.wireCheck.grid(row=3, column=0, sticky=tk.W)
+        self.only3D = tk.BooleanVar()
+        only3DCheck = ttk.Checkbutton(guiBottom, text='Only 3D Mode',
+                                      variable=self.only3D,
+                                      command=lambda: self.change('3'))
+        only3DCheck.grid(row=4, column=0, sticky=tk.W)
 
         # Grid view label and 4 view axis buttons
         viewLabel = ttk.Label(guiBottom, text='Views: ')
         viewLabel.grid(row=2, column=1, columnspan=2, sticky=tk.E)
-        viewBtns = [('x', [0, pi/2, pi/2]), ('y', [0, pi/2, pi/2]),
-                    ('z', [0, 0, pi/2]), ('w', [0, 0, 0])]
-        for i,(t,c) in enumerate(viewBtns):
+        self.viewBtns = [('x', [0, pi/2, pi/2]), ('y', [0, pi/2, pi/2]),
+                         ('z', [0, 0, pi/2]), ('w', [0, 0, 0])]
+        for i,(t,c) in enumerate(self.viewBtns):
             b = ttk.Button(guiBottom, text=t, width=2,
                            command=lambda c=c: self.canvas.set_view(c))
             b.bind('<Key-Return>', lambda event,c=c: self.canvas.set_view(c))
             b.grid(row=2, column=3+i)
+            self.viewBtns[i] = b
 
         # Grid zoom label, distance label, and 4 zoom/dist buttons
         zoomLabel = ttk.Label(guiBottom, text='zoom: ')
@@ -516,19 +524,37 @@ class Main(ttk.Frame):
             self.statusText.set(faceText)
 
     def change(self, change=None, value=0):
+
         """
         Change GUI values (checkboxes, zoom, distance) and re-render.
         change: the type of change to make (str)
-                'b', 'w', 's', 'r', 'z', 'z+', 'z-', 'd', 'd+', 'd-'
+                'b', 'w', '3', 's', 'r', 'z', 'z+', 'z-', 'd', 'd+', 'd-'
         value: the value to change to (float), default 0
         """
+
         if change == None:      # When checkboxes are ticked, just re-render
             pass
-        elif change == 'b':     # Disable bBrBtn if polyhedron has no snub
-            self.bBrBtn.config(state=tk.DISABLED)
+        elif change == 'b':     # Disable 'b' barBtn if polyhedron has no snub
+            self.barBtns[1].config(state=tk.DISABLED)
         elif change == 'w':     # Disable wireCheck if camera too close
             self.wire.set(True)
             self.wireCheck.config(state=tk.DISABLED)
+
+        elif change == '3':     # Disable 4D features if only 3D mode is on
+            if self.only3D.get() == True:   # Disable 4D view button
+                self.viewBtns[3].config(state=tk.DISABLED)
+                for i in range(3,6):        # Disable 4D rotation buttons
+                    self.rotBtns[i].config(state=tk.DISABLED)
+                self.canvas.set_rotax('xw') # Reset rotation and view axis
+                self.canvas.set_view([0, 0, pi/2])
+                self.wireCheck.config(state=tk.NORMAL)
+            else:                           # Enable everything above
+                self.viewBtns[3].config(state=tk.NORMAL)
+                for i in range(3,6):
+                    self.rotBtns[i].config(state=tk.NORMAL)
+                self.wire.set(True)         # Force wireframe mode to be true
+                self.wireCheck.config(state=tk.DISABLED)
+
         elif change == 's':     # Round scale labels to two decimal places
             for s in (self.lint, self.ltheta, self.lphi):
                 try:
@@ -545,6 +571,7 @@ class Main(ttk.Frame):
             self.ltheta.set('{0:.2f}'.format(axis[0]))
             self.lphi.set('{0:.2f}'.format(axis[1]))
             self.lomega.set('{0:.2f}'.format(axis[2]))
+
         elif change == 'r':     # Reset to initial states
             try:                # Canvas initializes before zoom
                 self.lint.set('{0:.2f}'.format(1))
@@ -557,8 +584,7 @@ class Main(ttk.Frame):
                 # Follows a x^(-3/2) curve; changes more as distance increases
                 # Min is ZOOM*RADIUS*RETINA/1000, max is ZOOM*RADIUS*RETINA
                 self.dist.set(int(ZOOM*RADIUS*RETINA/self.unitDist**(3/2)))
-                self.bBrBtn.config(state=tk.NORMAL)     # Reset button states
-                self.wireCheck.config(state=tk.NORMAL)
+                self.change('3')    # Set 3D mode to True
             except:
                 return
 
@@ -1545,7 +1571,7 @@ class Canvas(tk.Canvas):
         h = self.winfo_height()//2
 
         # Eraw the sphere overlay
-        if w != 0 and h != 0 and self.parent.sphere.get() == 1:
+        if w != 0 and h != 0 and self.parent.sphere.get() == True:
             # Draw the lines of longitude and latitude
             # _view flipped the x-coordinates upside down for some reason
             # w and h map the viewing plane origin to the centre of the screen
@@ -1578,7 +1604,7 @@ class Canvas(tk.Canvas):
         lcol = self._lightColour
 
         # Display by drawing polygons in normal mode
-        if self.parent.wire.get() == 0:
+        if self.parent.wire.get() == False:
             faces = self._currPolytope.get_faces()
             shades = self._currPolytope.get_shades(laxis)
             centres = self._currPolytope.get_face_centres()
@@ -1623,7 +1649,7 @@ class Canvas(tk.Canvas):
             return
 
         # Display by drawing lines in wireframe mode
-        elif self.parent.wire.get() == 1:
+        elif self.parent.wire.get() == True:
             edges = self._currPolytope.get_edges()
             centres = self._currPolytope.get_edge_centres()
             colours = self._currPolytope.get_point_colours()
