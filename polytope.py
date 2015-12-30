@@ -1,18 +1,22 @@
 """
-Polytope Player v0.83
+Polytope Player v0.84
 
 This program lets you play with polytopes!
-only3D now toggles an only-3D mode, which disables 4D functions,
-such as view from the w-axis and rotation not about the w-axis.
-Outside of only-3D mode, the wireframe mode is permanently on.
-But polychora are (and should not be) shaded in only-3D mode!
+There are now three sections of scales which scale most scalable stuff,
+including light properties, light colours, and camera position angles.
+There are no scales for the rotation axis-plane because the concept is
+unintuitive as a scale, and the user can just move the camera instead.
+Since lighting is only allowed in only3D mode, lomega is not necessary.
+Sliders have to communicate with the canvas very stupidly at the moment
+and it would be nice to reorganize those properties to put them in main.
+Also, I realized while sliding the camera that my view algorithm sucks.
 """
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
 import random
 
-TITLE = 'Polytope Player v0.83'
+TITLE = 'Polytope Player v0.84'
 DESCRIPTION = '\nThis script lets you play with polytopes.'
 WIDTH = 600
 HEIGHT = 550
@@ -177,10 +181,9 @@ class Main(ttk.Frame):
     rotBtns             To allow the buttons to be disabled (list)
     barBtns                 all elements are ttk.Buttons
     viewBtns
-    lint                To keep track of light intensity (tk.DoubleVar)
-    ltheta              To keep track of light theta position (tk.DoubleVar)
-    lphi                To keep track of light phi position (tk.DoubleVar)
-    lomega              To keep track of light omega position (tk.DoubleVar)
+    lint ltheta lphi    To keep track of light properties (tk.DoubleVars)
+    lred lgreen lblue   To keep track of light colours (tk.IntVars)
+    vtheta vphi vomega  To keep track of camera location (tk.DoubleVars)
     sphere              To keep track of sphere check (tk.BooleanVar)
     wire                To keep track of wire check (tk.BooleanVar)
     wireCheck           To allow the check to be disabled (ttk.Checkbutton)
@@ -321,10 +324,10 @@ class Main(ttk.Frame):
                         padx=10, pady=(0,20), sticky=tk.E+tk.W)
 
 
-        # Grid guiRight widgets: 13 rows, 3 columns
+        # Grid guiRight widgets: 21 rows, 3 columns
 
         # Grid rotate label, 2 rotate buttons, and 6 rotation axis buttons
-        rotateLabel = ttk.Label(guiRight, text='Rotate: ')
+        rotateLabel = ttk.Label(guiRight, text='Rotate:')
         rotateLabel.grid(row=0, column=0, columnspan=3)
         leftRotBtn = ttk.Button(guiRight, image=self._leftBtn,
                                 command=lambda: self.canvas.rotate(0))
@@ -350,7 +353,7 @@ class Main(ttk.Frame):
             self.rotBtns[i] = b     # Replace text with actual buttons
 
         # Grid Wythoff label and 9 Wythoff bar buttons
-        wythoffLabel = ttk.Label(guiRight, text='Wythoff: ')
+        wythoffLabel = ttk.Label(guiRight, text='Wythoff:')
         wythoffLabel.grid(row=4, column=0, columnspan=3, pady=(20,0))
         self.barBtns = [('(pqs)', 'a'), ('(|pqs)', 'b'), ('(pqs|)', 'c'),
                         ('(p|qs)', 'p'), ('(q|sp)', 'q'), ('(s|pq)', 's'),
@@ -363,12 +366,11 @@ class Main(ttk.Frame):
             self.barBtns[i] = b
 
         # Grid light axis and intensity labels, scales, and displays
-        lightLabel = ttk.Label(guiRight, text='Light Properties: ')
+        lightLabel = ttk.Label(guiRight, text='Light Properties:')
         lightLabel.grid(row=9, column=0, columnspan=3, pady=(20,0))
         self.lint = tk.DoubleVar()
         self.ltheta = tk.DoubleVar()
         self.lphi = tk.DoubleVar()
-        self.lomega = tk.DoubleVar()
         lightWidgets = [('cd', self.lint, 2), ('θ', self.ltheta, 6.28),
                         ('φ', self.lphi, 3.14)]     # t = text, v = variable
         for i,(t,v,o) in enumerate(lightWidgets):   # o = maximum value (to)
@@ -381,6 +383,44 @@ class Main(ttk.Frame):
             s = ttk.Scale(guiRight, orient=tk.VERTICAL, from_=0, to=o,
                           variable=v, command=lambda event: self.change('s'))
             s.grid(row=12, column=i)
+
+        # Grid light colours labels, scales, and displays
+        colourLabel = ttk.Label(guiRight, text='Light Colours:')
+        colourLabel.grid(row=13, column=0, columnspan=3, pady=(20,0))
+        self.lred = tk.DoubleVar()
+        self.lgreen = tk.DoubleVar()
+        self.lblue = tk.DoubleVar()
+        colourWidgets = [('Red', self.lred, 255), ('Green', self.lgreen, 255),
+                         ('Blue', self.lblue, 255)]
+        for i,(t,v,o) in enumerate(colourWidgets):
+            l = ttk.Label(guiRight, text=t)
+            l.grid(row=14, column=i)
+            d = ttk.Entry(guiRight, textvariable=v, width=4, validate='key',
+                          validatecommand=(self.register(self._valid),'%P',o))
+            d.bind('<Key-Return>', lambda event: self.change('s'))
+            d.grid(row=15, column=i)
+            s = ttk.Scale(guiRight, orient=tk.VERTICAL, from_=0, to=o,
+                          variable=v, command=lambda event: self.change('s'))
+            s.grid(row=16, column=i)
+
+        # Grid view axis labels, scales, and displays
+        viewLabel = ttk.Label(guiRight, text='Camera Direction:')
+        viewLabel.grid(row=17, column=0, columnspan=3, pady=(20,0))
+        self.vtheta = tk.DoubleVar()
+        self.vphi = tk.DoubleVar()
+        self.vomega = tk.DoubleVar()
+        viewWidgets = [('θ', self.vtheta, 6.28), ('φ', self.vphi, 3.14),
+                       ('ω', self.vomega, 3.14)]
+        for i,(t,v,o) in enumerate(viewWidgets):
+            l = ttk.Label(guiRight, text=t)
+            l.grid(row=18, column=i)
+            d = ttk.Entry(guiRight, textvariable=v, width=4, validate='key',
+                          validatecommand=(self.register(self._valid), '%P',o))
+            d.bind('<Key-Return>', lambda event: self.change('s'))
+            d.grid(row=19, column=i)
+            s = ttk.Scale(guiRight, orient=tk.VERTICAL, from_=0, to=o,
+                          variable=v, command=lambda event: self.change('s'))
+            s.grid(row=20, column=i)
 
 
         # Grid guiBottom widgets: 5 rows, 7 columns
@@ -414,7 +454,7 @@ class Main(ttk.Frame):
         only3DCheck.grid(row=4, column=0, sticky=tk.W)
 
         # Grid view label and 4 view axis buttons
-        viewLabel = ttk.Label(guiBottom, text='Views: ')
+        viewLabel = ttk.Label(guiBottom, text='Views:')
         viewLabel.grid(row=2, column=1, columnspan=2, sticky=tk.E)
         self.viewBtns = [('x', [0, pi/2, pi/2]), ('y', [0, pi/2, pi/2]),
                          ('z', [0, 0, pi/2]), ('w', [0, 0, 0])]
@@ -426,9 +466,9 @@ class Main(ttk.Frame):
             self.viewBtns[i] = b
 
         # Grid zoom label, distance label, and 4 zoom/dist buttons
-        zoomLabel = ttk.Label(guiBottom, text='zoom: ')
+        zoomLabel = ttk.Label(guiBottom, text='zoom:')
         zoomLabel.grid(row=3, column=1, sticky=tk.E)
-        distLabel = ttk.Label(guiBottom, text='d: ')
+        distLabel = ttk.Label(guiBottom, text='d:')
         distLabel.grid(row=3, column=4, sticky=tk.E)
         upDownBtns = ['z+', 'z-', 'd+', 'd-']
         for i,c in enumerate(upDownBtns):
@@ -556,28 +596,39 @@ class Main(ttk.Frame):
                 self.wireCheck.config(state=tk.DISABLED)
 
         elif change == 's':     # Round scale labels to two decimal places
-            for s in (self.lint, self.ltheta, self.lphi):
+            for s in (self.lint, self.ltheta, self.lphi,
+                      self.vtheta, self.vphi, self.vomega):
                 try:
                     s.get()
                 except tk.TclError:     # Error because tk expects a float
                     s.set(0)            # but the entry may be an empty string
-            self.lint.set('{0:.2f}'.format(self.lint.get()))
-            self.ltheta.set('{0:.2f}'.format(self.ltheta.get()))
-            self.lphi.set('{0:.2f}'.format(self.lphi.get()))
+                s.set('{0:.2f}'.format(s.get()))
+            # Round RGB colour labels to zero decimal places
+            for s in (self.lred, self.lgreen, self.lblue):
+                try:
+                    s.get()
+                except tk.TclError:
+                    s.set(0)
+                s.set('{0:.0f}'.format(s.get()))
+            # Update the current light colour and camera position
+            self.canvas.set_light([s.get() for s in
+                                   (self.lred, self.lgreen, self.lblue)])
+            self.canvas.set_view([s.get() for s in
+                                  (self.vtheta, self.vphi, self.vomega)])
+
+
         elif change == 'li':
             self.lint.set('{0:.2f}'.format(value))
         elif change == 'la':
             axis = satisfy_axis_restrictions(value)
             self.ltheta.set('{0:.2f}'.format(axis[0]))
             self.lphi.set('{0:.2f}'.format(axis[1]))
-            self.lomega.set('{0:.2f}'.format(axis[2]))
 
         elif change == 'r':     # Reset to initial states
             try:                # Canvas initializes before zoom
                 self.lint.set('{0:.2f}'.format(1))
                 self.ltheta.set('{0:.2f}'.format(0))
                 self.lphi.set('{0:.2f}'.format(0))
-                self.lomega.set('{0:.2f}'.format(1.57))
                 self.zoom.set(ZOOM) # Set initial zoom to ZOOM
                 self.unitDist = 20  # Set initial distance to 20 from max
                 # unitDist changes by one per button press, between 1 and 100
@@ -696,6 +747,12 @@ class Canvas(tk.Canvas):
         lcol: the light colour in RGB integers between 0 and 255 (list, len=3)
         """
         self._lightColour = lcol
+        try:
+            self.parent.lred.set('{0:.0f}'.format(self._lightColour[0]))
+            self.parent.lgreen.set('{0:.0f}'.format(self._lightColour[1]))
+            self.parent.lblue.set('{0:.0f}'.format(self._lightColour[2]))
+        except:
+            pass    # Light colour scales not loaded yet, fix this soon!
         if self._hasPolytope:
             self.parent.set_status('lcol')
         self.render()
@@ -760,9 +817,15 @@ class Canvas(tk.Canvas):
     def set_view(self, viewAxis):
         """
         Change the current viewing axis and re-render.
-        viewAxis: the viewing axis in spherical coordinates (list, len=4)
+        viewAxis: the viewing axis in spherical coordinates (list, len=3)
         """
         self._viewAxis = satisfy_axis_restrictions(viewAxis)
+        try:
+            self.parent.vtheta.set('{0:.2f}'.format(self._viewAxis[0]))
+            self.parent.vphi.set('{0:.2f}'.format(self._viewAxis[1]))
+            self.parent.vomega.set('{0:.2f}'.format(self._viewAxis[2]))
+        except:
+            pass    # Camera position scales not loaded yet, fix this soon!
         self.render()
         # Since _reset resets all changes, only update status if has polytope
         if self._hasPolytope:
@@ -1597,8 +1660,8 @@ class Canvas(tk.Canvas):
                   self._view(self._currPolytope.get_points())]
         # As the camera moves away, the light source moves the same distance
         camera = convert([self.parent.dist.get()] + self._viewAxis,True)
-        lightAxis = [self.parent.ltheta.get(), self.parent.lphi.get(),
-                     self.parent.lomega.get()]
+        # Light axis only has theta and phi, omega will always be 1.57
+        lightAxis = [self.parent.ltheta.get(), self.parent.lphi.get(), pi/2]
         laxis = convert([self.parent.dist.get()] + lightAxis,True)
         lint = self.parent.lint.get()
         lcol = self._lightColour
