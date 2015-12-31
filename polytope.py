@@ -1,22 +1,19 @@
 """
-Polytope Player v0.84
+Polytope Player v0.85
 
 This program lets you play with polytopes!
-There are now three sections of scales which scale most scalable stuff,
-including light properties, light colours, and camera position angles.
-There are no scales for the rotation axis-plane because the concept is
-unintuitive as a scale, and the user can just move the camera instead.
-Since lighting is only allowed in only3D mode, lomega is not necessary.
-Sliders have to communicate with the canvas very stupidly at the moment
-and it would be nice to reorganize those properties to put them in main.
-Also, I realized while sliding the camera that my view algorithm sucks.
+Instead of drawing lines in the wireframe mode with distance quintiles,
+line colour and width now linearly depends on distance from the camera.
+The radial sphere's axes are now set in main so their size is constant,
+but they don't rotate and they throw ZeroDivisionErrors everywhere too.
+In other words, I realized that my view algorithm sucks, once again....
 """
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
 import random
 
-TITLE = 'Polytope Player v0.84'
+TITLE = 'Polytope Player v0.85'
 DESCRIPTION = '\nThis script lets you play with polytopes.'
 WIDTH = 600
 HEIGHT = 550
@@ -46,7 +43,7 @@ COLOURS = [('#000', '#F00', '#00F'),    # Temporary hardcoded constant colours
            {3:'#719',4:'#1B1',5:'#04D',6:'#F8C',7:'#630',8:'#E00',9:'#9DF',
            10:'#098', 11:'#F70', 12:'#9F7', 13:'#C07', 14:'#FF1', 15:'#7BF',
            16:'#999', 17:'#8F0', 18:'#B7F', 19:'#90E', 20:'#030', 21:'#0CA'},
-           ('#FD9', '#F00', '#0F0', '#00F'), ('#CCC', '#FFF', '#F00')]
+           ('#FD9', '#F00', '#0F0', '#00F', '#F90'), ('#CCC', '#FFF', '#F00')]
 
 
 
@@ -641,15 +638,15 @@ class Main(ttk.Frame):
 
         # All ZOOM values are explained with the constants
         elif change == 'z':     # Set zoom to the given value or the max zoom
-            self.zoom.set(min(value, ZOOM*RADIUS*RETINA/2))
+            self.zoom.set(int(min(value, ZOOM*RADIUS*RETINA/2)))
         elif change == 'z+':    # Change zoom by 5 per button press
-            self.zoom.set(min(self.zoom.get() + 5, ZOOM*RADIUS*RETINA/2))
+            self.zoom.set(int(min(self.zoom.get() + 5, ZOOM*RADIUS*RETINA/2)))
         elif change == 'z-':
-            self.zoom.set(max(self.zoom.get() - 5, 0))
+            self.zoom.set(int(max(self.zoom.get() - 5, 1))) # Minimum 1, not 0
 
         # Decreasing distance increases unitDist
         elif change == 'd':     # Set distance to given value or max distance
-            self.dist.set(min(value, ZOOM*RADIUS*RETINA))
+            self.dist.set(int(min(value, ZOOM*RADIUS*RETINA)))
             self.unitDist = math.ceil((ZOOM*RADIUS*RETINA/value)**(2/3))
             if self.unitDist >= 100:    # unitDist is an integer within bounds
                 self.unitDist = 100     # math.ceil guarantees unitDist >= 1
@@ -1643,13 +1640,17 @@ class Canvas(tk.Canvas):
             edges = self._sphere.get_edges()
             for edge in edges:
                 self.create_line(points[edge[0]], points[edge[1]],
-                                 fill='#000', width=3)
+                                 fill=COLOURS[1][3], width=3)
             # Draw the three coordinate axes
-            axes = [(-point[0]+w, point[1]+h) for point in
-                    self._view(self._sphere.get_axes())]
+            # Half-length of the axis, hard-coded, ZeroDivisionError somewhere
+            l = 0.3 * RADIUS * self.parent.dist.get() / self.parent.zoom.get()
+            axis = [(l,0,0,0), (-l,0,0,0), (0,l,0,0), (0,-l,0,0),
+                    (0,0,l,0), (0,0,-l,0), (0,0,0,l), (0,0,0,-l)]
+            axes = [(-point[0]+w, point[1]+h) for point in self._view(axis)]
             self.create_line(axes[0],axes[1], fill=COLOURS[3][1], width=5)
             self.create_line(axes[2],axes[3], fill=COLOURS[3][2], width=5)
             self.create_line(axes[4],axes[5], fill=COLOURS[3][3], width=5)
+            self.create_line(axes[6],axes[7], fill=COLOURS[3][4], width=5)
 
         if not self._hasPolytope:
             return      # Do nothing if there's nothing to do
@@ -1685,9 +1686,8 @@ class Canvas(tk.Canvas):
                     # Then multiply result by shade and intensity again
                     col = (deccol*16 + lcol[i] * lint)/2 * shades * lint
                     # Use min and abs so that result is positive and under 255
-                    color = min(255, abs(col))
-                    colour.append(format(int(color), '02x'))
-                rgb = '#' + ''.join(colour)
+                    colour.append(int(min(255, abs(col))))
+                rgb = '#{0:02x}{1:02x}{2:02x}'.format(*colour)
                 edges = [points[side] for side in faces[0]]
                 self.create_polygon(edges,outline=COLOURS[1][5],
                                     width=3,fill=rgb)
@@ -1703,9 +1703,8 @@ class Canvas(tk.Canvas):
                 for i in range(3):
                     deccol = int(hexcol[1+i], 16)
                     col = (deccol*16 + lcol[i] * lint)/2 * shades[face] * lint
-                    color = max(0, min(255, col))   # Result between 0 and 255
-                    colour.append(format(int(color), '02x'))
-                rgb = '#' + ''.join(colour)
+                    colour.append(int(max(0, min(255, col))))
+                rgb = '#{0:02x}{1:02x}{2:02x}'.format(*colour)
                 edges = [points[side] for side in faces[face]]
                 self.create_polygon(edges,outline=COLOURS[1][5],
                                     width=3,fill=rgb)
@@ -1720,19 +1719,20 @@ class Canvas(tk.Canvas):
                 self.create_oval([p-5 for p in points[colour[0]]],
                                  [p+5 for p in points[colour[0]]],
                                  fill=COLOURS[0][colour[1]])
-            distances = {}
+            # Create list of doubles of edge distance and edge number
+            distances = []
             for i in range(len(edges)):
-                distances[i] = distance(centres[i], camera)
-            order = sorted(distances, key=distances.get, reverse=True)
-            quintile = 0            # Group edges into distance quintiles
-            fifth = len(order)/5
-            count = 0
-            for e in order:
-                if count >= quintile*fifth:
-                    quintile += 1
-                count += 1
+                distances.append((math.sqrt(distance(centres[i], camera)), i))
+            order = sorted(distances, reverse=True)
+            closest = self.parent.dist.get() - RADIUS
+            for d,e in order:
+                # Colour of closest line is 0, colour of furthest line is 240
+                col = int(120 * (d - closest) / RADIUS)
+                rgb = '#' + '{0:02x}{0:02x}{0:02x}'.format(col)
+                # Width of closest line is 5, width of furthest line is 1
+                width = int(5 - 2 * (d - closest) / RADIUS)
                 self.create_line(points[edges[e][0]], points[edges[e][1]],
-                                 fill=COLOURS[1][quintile], width=quintile)
+                                 fill=rgb, width=width)
             return
 
 
@@ -2254,7 +2254,6 @@ class Sphere():
     Public methods:
     get_points          Return a list of points of the sphere.
     get_edges           Return a list of edges of the sphere.
-    get_axes            Return a list of Cartesian coordinate axes.
     set_rotaxis         Set the rotation axis-plane of the sphere.
     rotate              Rotate the current sphere.
 
@@ -2302,11 +2301,6 @@ class Sphere():
         self._edges.extend([((n-1)*(n-1)+k+2, (n-1)*(n-1)+k+3)
                             for k in range(n-2)])
 
-        # Create three orthogonal basis axes
-        self._axes = [(2*r,0,0,0), (-2*r,0,0,0),
-                      (0,2*r,0,0), (0,-2*r,0,0),
-                      (0,0,2*r,0), (0,0,-2*r,0)]
-
     def get_points(self):
         """
         Return a list of points of the sphere.
@@ -2323,14 +2317,6 @@ class Sphere():
                 all elements are point indices (int)
         """
         return self._edges
-
-    def get_axes(self):
-        """
-        Return a list of Cartesian coordinate axes.
-        return: a list of points of the Cartesian axes (list)
-                all elements are in Cartesian coordinates (list, len=4)
-        """
-        return self._axes
 
     def set_rotaxis(self, axes):
         """
@@ -2360,16 +2346,6 @@ class Sphere():
                 iq = cross4D(ip, i, j, ip)
                 self._points[n] = [ip[t]*cos+iq[t]*sin + I[t]
                                    for t in range(4)]
-        for n in range(len(self._axes)):
-            p = self._axes[n]
-            r = sum([p[t]*i[t] for t in range(4)])
-            s = sum([p[t]*j[t] for t in range(4)])
-            I = [i[t]*r+j[t]*s for t in range(4)]
-            ip = [p[t]-I[t] for t in range(4)]
-            if ip != [0,0,0,0]:
-                iq = cross4D(ip, i, j, ip)
-                self._axes[n] = [ip[t]*cos + iq[t]*sin + I[t]
-                                 for t in range(4)]
 
 
 
