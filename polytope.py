@@ -1,19 +1,17 @@
 """
-Polytope Player v0.85
+Polytope Player v0.86
 
 This program lets you play with polytopes!
-Instead of drawing lines in the wireframe mode with distance quintiles,
-line colour and width now linearly depends on distance from the camera.
-The radial sphere's axes are now set in main so their size is constant,
-but they don't rotate and they throw ZeroDivisionErrors everywhere too.
-In other words, I realized that my view algorithm sucks, once again....
+The coordinate axes are now separate entities from the radial sphere,
+and all of those canvas objects (Polytope, Sphere, Axes) now inherit
+from a general Object class that manages points, edges, and rotations.
 """
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
 import random
 
-TITLE = 'Polytope Player v0.85'
+TITLE = 'Polytope Player v0.86'
 DESCRIPTION = '\nThis script lets you play with polytopes.'
 WIDTH = 600
 HEIGHT = 550
@@ -182,6 +180,7 @@ class Main(ttk.Frame):
     lred lgreen lblue   To keep track of light colours (tk.IntVars)
     vtheta vphi vomega  To keep track of camera location (tk.DoubleVars)
     sphere              To keep track of sphere check (tk.BooleanVar)
+    axes                To keep track of axes check (tk.BooleanVar)
     wire                To keep track of wire check (tk.BooleanVar)
     wireCheck           To allow the check to be disabled (ttk.Checkbutton)
     only3D              To know if only 3D mode is on (tk.BooleanVar)
@@ -433,22 +432,27 @@ class Main(ttk.Frame):
         inputBox.grid(row=1, column=0, columnspan=7, sticky=tk.E+tk.W)
         inputBox.focus()    # Put initial keyboard focus on inputBox
 
-        # Grid 2 checkbuttons for toggling sphere and wireframe
+        # Grid 4 checkbuttons for toggling BooleanVars
         self.sphere = tk.BooleanVar()
         sphereCheck = ttk.Checkbutton(guiBottom, text='Sphere',
                                       variable=self.sphere,
                                       command=lambda: self.change())
         sphereCheck.grid(row=2, column=0, sticky=tk.W)
+        self.axes = tk.BooleanVar()
+        axesCheck = ttk.Checkbutton(guiBottom, text='Axes',
+                                    variable=self.axes,
+                                    command=lambda: self.change())
+        axesCheck.grid(row=3, column=0, sticky=tk.W)
         self.wire = tk.BooleanVar()
         self.wireCheck = ttk.Checkbutton(guiBottom, text='Wireframe',
                                          variable=self.wire,
                                          command=lambda: self.change())
-        self.wireCheck.grid(row=3, column=0, sticky=tk.W)
+        self.wireCheck.grid(row=4, column=0, sticky=tk.W)
         self.only3D = tk.BooleanVar()
         only3DCheck = ttk.Checkbutton(guiBottom, text='Only 3D Mode',
                                       variable=self.only3D,
                                       command=lambda: self.change('3'))
-        only3DCheck.grid(row=4, column=0, sticky=tk.W)
+        only3DCheck.grid(row=5, column=0, sticky=tk.W)
 
         # Grid view label and 4 view axis buttons
         viewLabel = ttk.Label(guiBottom, text='Views:')
@@ -713,6 +717,7 @@ class Canvas(tk.Canvas):
     _hasPolytope        To keep track of if the polytope exists (bool)
     _currPolytope       Instance of Polytope class (Polytope)
     _sphere             Instance of Sphere class (Sphere)
+    _axes               Instance of Axes class (Axes)
     _currWythoff        To keep track of the current Wythoff numbers (list)
     _noSnub             To keep track of if the snub does not exist (bool)
     _lightColour        The current light colour (list)
@@ -800,6 +805,7 @@ class Canvas(tk.Canvas):
             self.rotAxis = rotAxis  # Manual input, not button press
         self._currPolytope.set_rotaxis(self.rotAxis)
         self._sphere.set_rotaxis(self.rotAxis)
+        self._axes.set_rotaxis(self.rotAxis)
         self.render()
         if self._hasPolytope:
             self.parent.set_status('rot')
@@ -837,9 +843,11 @@ class Canvas(tk.Canvas):
         if direction == 0:
             self._currPolytope.rotate(rotAngle)
             self._sphere.rotate(rotAngle)
+            self._axes.rotate(rotAngle)
         elif direction == 1:    # Opposite direction is backwards rotation
             self._currPolytope.rotate(-rotAngle)
             self._sphere.rotate(-rotAngle)
+            self._axes.rotate(-rotAngle)
         self.render()
 
     def get_data(self, event):
@@ -987,6 +995,8 @@ class Canvas(tk.Canvas):
                 return ValueError
 
 
+        """
+        # Currently broken since their radius results in negative edge colours
         elif entry == '{3,3,3}':            # Pentachoron, side-length 4r
             r = 2*RADIUS
             self._hasPolytope = True
@@ -996,9 +1006,9 @@ class Canvas(tk.Canvas):
                  [r/math.sqrt(10),r/math.sqrt(6),-2*r/math.sqrt(3),0],
                  [r/math.sqrt(10),-r*math.sqrt(3/2),0,0],
                  [-2*r*math.sqrt(2/5),0,0,0]],
-                [(k, 0) for k in range(5)],
                 ((0,1),(0,2),(0,3),(0,4),(1,2),
-                 (1,3),(1,4),(2,3),(2,4),(3,4))))
+                 (1,3),(1,4),(2,3),(2,4),(3,4)),
+                [(k, 0) for k in range(5)]))
 
         elif entry == '{4,3,3}':            # Tesseract, side-length 2r
             r = RADIUS
@@ -1008,11 +1018,11 @@ class Canvas(tk.Canvas):
                   [r,-r,r,r],[r,-r,r,-r],[r,-r,-r,r],[r,-r,-r,-r],
                   [-r,r,r,r],[-r,r,r,-r],[-r,r,-r,r],[-r,r,-r,-r],
                   [-r,-r,r,r],[-r,-r,r,-r],[-r,-r,-r,r],[-r,-r,-r,-r]],
-                 [(k, 0) for k in range(16)],
                  ((0,1),(1,3),(3,2),(2,0),(12,13),(13,15),(15,14),(14,12),
                   (4,5),(5,7),(7,6),(6,4),(8,9),(9,11),(11,10),(10,8),
                   (0,4),(1,5),(2,6),(3,7),(8,12),(9,13),(10,14),(11,15),
-                  (0,8),(1,9),(2,10),(3,11),(4,12),(5,13),(6,14),(7,15))))
+                  (0,8),(1,9),(2,10),(3,11),(4,12),(5,13),(6,14),(7,15)),
+                 [(k, 0) for k in range(16)]))
 
         elif entry == '{3,3,4}':            # Hexadecachoron, side-length 4r
             r = 2*RADIUS
@@ -1020,15 +1030,16 @@ class Canvas(tk.Canvas):
             return Polytope((
                 [[r,0,0,0],[-r,0,0,0],[0,r,0,0],[0,-r,0,0],
                  [0,0,r,0],[0,0,-r,0],[0,0,0,r],[0,0,0,-r]],
-                [(k, 0) for k in range(8)],
                 ((0,2),(0,3),(0,4),(0,5),(0,6),(0,7),
                  (1,2),(1,3),(1,4),(1,5),(1,6),(1,7),
                  (2,4),(2,5),(2,6),(2,7),(3,4),(3,5),
-                 (3,6),(3,7),(4,6),(4,7),(5,6),(5,7))))
+                 (3,6),(3,7),(4,6),(4,7),(5,6),(5,7)),
+                [(k, 0) for k in range(8)]))
+        """
 
 
         # Schlafli symbol: {p/d} or {p,q}
-        elif entry.startswith('{') and entry.endswith('}'):
+        if entry.startswith('{') and entry.endswith('}'):
             try:
                 if ',' in entry:
                     self._hasPolytope = True
@@ -1077,7 +1088,7 @@ class Canvas(tk.Canvas):
                   for n in range(len(thetas))]
         colours = [(k,0) for k in range(p)]
         edges = [(k,(k+1)%p) for k in range(p)] # Connect points to next ones
-        return points, colours, edges
+        return points, edges, colours
 
     def _schlafli3D(self, entry):
 
@@ -1165,7 +1176,7 @@ class Canvas(tk.Canvas):
         points = [convert((rs[n], thetas[n], phis[n], omegas[n]), True)
                   for n in range(len(thetas))]
         colours = [(k, 0) for k in range(len(thetas))]
-        return points, colours, edges
+        return points, edges, colours
 
     def _wythoff(self, entry=None, selection='a'):
 
@@ -1332,7 +1343,7 @@ class Canvas(tk.Canvas):
                 for k in range(n+1, len(points)):
                     if abs(distance(points[n], points[k]) - side) < 2:
                         edges.append((n,k))
-        return points, colours, edges
+        return points, edges, colours
 
     def _wythoff_snub(self, p, q, s):
 
@@ -1630,7 +1641,7 @@ class Canvas(tk.Canvas):
         w = self.winfo_width()//2   # Center the frame
         h = self.winfo_height()//2
 
-        # Eraw the sphere overlay
+        # Draw the sphere overlay
         if w != 0 and h != 0 and self.parent.sphere.get() == True:
             # Draw the lines of longitude and latitude
             # _view flipped the x-coordinates upside down for some reason
@@ -1641,16 +1652,17 @@ class Canvas(tk.Canvas):
             for edge in edges:
                 self.create_line(points[edge[0]], points[edge[1]],
                                  fill=COLOURS[1][3], width=3)
-            # Draw the three coordinate axes
+
+        # Draw the coordinate axes
+        if w != 0 and h != 0 and self.parent.axes.get() == True: 
             # Half-length of the axis, hard-coded, ZeroDivisionError somewhere
             l = 0.3 * RADIUS * self.parent.dist.get() / self.parent.zoom.get()
-            axis = [(l,0,0,0), (-l,0,0,0), (0,l,0,0), (0,-l,0,0),
-                    (0,0,l,0), (0,0,-l,0), (0,0,0,l), (0,0,0,-l)]
-            axes = [(-point[0]+w, point[1]+h) for point in self._view(axis)]
-            self.create_line(axes[0],axes[1], fill=COLOURS[3][1], width=5)
-            self.create_line(axes[2],axes[3], fill=COLOURS[3][2], width=5)
-            self.create_line(axes[4],axes[5], fill=COLOURS[3][3], width=5)
-            self.create_line(axes[6],axes[7], fill=COLOURS[3][4], width=5)
+            axes = [normalize(axis, [l]) for axis in self._axes.get_points()]
+            points = [(-point[0]+w, point[1]+h) for point in self._view(axes)]
+            edges = self._axes.get_edges()
+            for i,edge in enumerate(edges):
+                self.create_line(points[edge[0]], points[edge[1]],
+                                 fill=COLOURS[3][i+1], width=5)
 
         if not self._hasPolytope:
             return      # Do nothing if there's nothing to do
@@ -1739,7 +1751,8 @@ class Canvas(tk.Canvas):
     def _reset(self):
         # Clear the canvas and reset all variables to default state.
         self.delete(tk.ALL)
-        self._sphere = Sphere(SPHERENUM, RADIUS)    # Create the sphere
+        self._sphere = Sphere(SPHERENUM, RADIUS)
+        self._axes = Axes()
         # Default settings
         self.set_rotax('xw')
         self.set_view([0, 0, pi/2])
@@ -1752,29 +1765,120 @@ class Canvas(tk.Canvas):
 
 
 
-class Polytope():
+class Object():
 
     """
-    Drawing class that stores vertex coordinates and manages rotations.
+    Generic parent class of canvas objects that manages rotations.
 
     Public methods:
+    get_points          Return a list of points of the canvas object.
+    get_edges           Return a list of edges of the canvas object.
+    set_rotaxis         Set the rotation axis-plane of the canvas object.
+    rotate              Rotate the canvas object.
+
+    Private methods:
+    __init__            Construct Object class.
+
+    Private variables:
+    _points             The points of the canvas object (list)
+                            elements are in Cartesian coordinates (list)
+    _edges              The edges of the canvas object (list)
+                            elements are lists of point indices (list)
+    _axis_i             A basis vector of the rotation axis-plane (list)
+    _axis_j             A basis vector, both in Cartesian coordinates (list)
+    """
+    
+    def __init__(self, points, edges):
+        """
+        Construct Object class.
+        points: the initial points of the canvas object (list)
+            elements are in Cartesian coordinates (list, len=4)
+        edges: the edges of the canvas object (list)
+            elements are lists of edge endpoints (list, len=2)
+        """
+        self._points = points
+        self._edges = edges
+
+    def get_points(self):
+        """
+        Return a list of points of the canvas object.
+        return: a list of points of the canvas object (list)
+                all elements are in Cartesian coordinates (list, len=4)
+        """
+        return self._points
+
+    def get_edges(self):
+        """
+        Return a list of edges of the polytope.
+        return: a list of edges of the polytope (list)
+                all elements are lists of edge endpoints (list, len=2)
+        """
+        return self._edges
+
+    def set_rotaxis(self, axes):
+        """
+        Set the perpendicular unit axes of rotation of the canvas object.
+        axes: the perpendicular unit axes of rotation (list, len=2)
+              all elements are in Cartesian coordinates (list, len=4)
+        """
+        self._axis_i = normalize(axes[0])
+        self._axis_j = normalize(axes[1])
+
+    def rotate(self, rotAngle):
+        """
+        Rotate the canvas object.
+        rotAngle: the angle to rotate the canvas object by (float)
+        """
+        i = self._axis_i
+        j = self._axis_j
+        cos = math.cos(rotAngle)
+        sin = math.sin(rotAngle)
+        for n in range(len(self._points)):
+            p = self._points[n]
+            r = sum([p[t]*i[t] for t in range(4)])
+            s = sum([p[t]*j[t] for t in range(4)])
+            I = [i[t]*r+j[t]*s for t in range(4)]
+            ip = [p[t]-I[t] for t in range(4)]
+            if ip != [0,0,0,0]:     # If I = P, then there is no rotation
+                iq = cross4D(ip, i, j, ip)
+                self._points[n] = [ip[t]*cos+iq[t]*sin + I[t]
+                                   for t in range(4)]
+
+
+
+class Polytope(Object):
+
+    """
+    Drawing class that stores vertex coordinates.
+
+    Inherited methods:
+    __init__            Construct Polytope class.
     get_points          Return a list of points of the polytope.
-    get_point_colours   Return a list of colours of the points.
     get_edges           Return a list of edges of the polytope.
+    set_rotaxis         Set the rotation axis-plane of the polytope.
+    rotate              Rotate the polytope and reset midpoints and centres.
+
+    Inherited variables:
+    _points             The points of the polytope (list)
+                            elements are in Cartesian coordinates (list)
+    _edges              The edges of the polytope (list)
+                            elements are lists of point indices (list)
+    _axis_i             A basis vector of the rotation axis-plane (list)
+    _axis_j             A basis vector, both in Cartesian coordinates (list)
+
+    Public methods:
+    get_point_colours   Return a list of colours of the points.
     get_faces           Return a dict of faces of the polytope.
     get_face_sides      Return a dict of the number of each polygon.
     get_faces_by_side   Return a dict of the polygon type of each face.
     get_edge_centres    Return a list of edge midpoints of the polytope.
     get_face_centres    Return a dict of face centres of the polytope.
     get_shades          Calculate the amount of shading needed for each face.
-    set_rotaxis         Set the rotation axis-plane of the polytope.
-    rotate              Rotate the current polytope.
 
     Public variables:
     star                To keep track of if there are star faces. (bool)
 
     Private methods:
-    __init__            Construct Polytope class.
     _set_faces          Create the face dictionaries using the edge list.
     _bfs                Breadth-first search.
     _has_star           Check to see if a polygon is a star.
@@ -1788,12 +1892,8 @@ class Polytope():
     _remove_close_faces Remove faces that are too close to the centre.
 
     Private variables:
-    _points             The points of the polytope (list)
-                            elements are in Cartesian coordinates (list)
     _pointColours       The point colours of the polytope (list)
                             elements are integers from 0 to 2
-    _edges              The edges of the polytope (list)
-                            elements are lists of point indices (list)
     _faces              The faces of the polytope (dict)
                             keys are face indices (int)
                             values are lists of point indices (list)
@@ -1810,8 +1910,6 @@ class Polytope():
     _graph              To better represent edges as point neighbours (dict)
     _visited            To keep track of already visited points (set)
     _triangles          To keep track of already added triangles (set)
-    _axis_i             A basis vector of the rotation axis-plane (list)
-    _axis_j             A basis vector, both in Cartesian coordinates (list)
     """
 
     def __init__(self, data):
@@ -1822,9 +1920,8 @@ class Polytope():
               otherwise, data = [points, edges, pointColours]
         """
         if data:
-            self._points = data[0]
-            self._pointColours = data[1]
-            self._edges = data[2]
+            super().__init__(data[0], data[1])
+            self._pointColours = data[2]
             self._set_faces()
             self._set_edge_centres()
             self._set_face_centres()
@@ -1840,8 +1937,8 @@ class Polytope():
                 self._remove_faces()
         else:   # Initialize everything as empty lists if data is empty list
             self.star = False
-            self._points = []
             self._pointColours = []
+            self._points = []
             self._edges = []
             self._faces = []
             self._faceSides = []
@@ -2114,14 +2211,6 @@ class Polytope():
                 self._faceCentres.pop(i)
                 self._faceTypes.pop(i)
 
-    def get_points(self):
-        """
-        Return a list of points of the polytope.
-        return: a list of points of the polytope (list)
-                all elements are in Cartesian coordinates (list, len=4)
-        """
-        return self._points
-
     def get_point_colours(self):
         """
         Return a list of colours of the points of the polytope.
@@ -2129,14 +2218,6 @@ class Polytope():
                 all elements are in integers (int)
         """
         return self._pointColours
-
-    def get_edges(self):
-        """
-        Return a list of edges of the polytope.
-        return: a list of edges of the polytope (list)
-                all elements are lists of edge endpoints (list, len=2)
-        """
-        return self._edges
 
     def get_faces(self):
         """
@@ -2214,138 +2295,99 @@ class Polytope():
                 shades.append(sum([light[i]*normal[i]/dnm for i in range(3)]))
             return shades
 
-    def set_rotaxis(self, axes):
-        """
-        Set the perpendicular unit axes of rotation of the polytope.
-        axes: the perpendicular unit axes of rotation (list, len=2)
-              all elements are in Cartesian coordinates (list, len=4)
-        """
-        self._axis_i = normalize(axes[0])
-        self._axis_j = normalize(axes[1])
-
     def rotate(self, rotAngle):
         """
         Rotate the current polytope and reset edge midpoints and face centres.
         rotAngle: the angle to rotate the current polytope by (float)
         """
-        i = self._axis_i
-        j = self._axis_j
-        cos = math.cos(rotAngle)
-        sin = math.sin(rotAngle)
-        for n in range(len(self._points)):
-            p = self._points[n]
-            r = sum([p[t]*i[t] for t in range(4)])
-            s = sum([p[t]*j[t] for t in range(4)])
-            I = [i[t]*r+j[t]*s for t in range(4)]
-            ip = [p[t]-I[t] for t in range(4)]
-            if ip != [0,0,0,0]:     # If I = P, then there is no rotation
-                iq = cross4D(ip, i, j, ip)
-                self._points[n] = [ip[t]*cos+iq[t]*sin + I[t]
-                                   for t in range(4)]
+        super().rotate(rotAngle)
         self._set_edge_centres()
         self._set_face_centres()
 
 
-class Sphere():
+
+class Sphere(Object):
 
     """
-    Drawing class that stores latitude and longitude and manages rotations.
+    Drawing class that stores latitude and longitude.
 
-    Public methods:
+    Inherited methods:
+    __init__            Construct Sphere class.
     get_points          Return a list of points of the sphere.
     get_edges           Return a list of edges of the sphere.
     set_rotaxis         Set the rotation axis-plane of the sphere.
-    rotate              Rotate the current sphere.
+    rotate              Rotate the sphere.
 
-    Private methods:
-    __init__            Construct Sphere class.
-
-    Private variables:
+    Inherited variables:
     _points             The points of the sphere (list)
                             elements are in Cartesian coordinates (list)
     _edges              The edges of the sphere (list)
                             elements are lists of point indices (list)
-    _axes               The Cartesian coordinate axes (list)
-                            elements are in Cartesian coordinates (list)
     _axis_i             A basis vector of the rotation axis-plane (list)
     _axis_j             A basis vector, both in Cartesian coordinates (list)
     """
 
     def __init__(self, number, radius):
-
         """
         Construct Sphere class.
         number: the number of longitude and latitude circles to draw (int)
         radius: the radius of the sphere (float)
         """
-
         n = number
         r = radius
         thetas = [2*k*pi/n for k in range(n)]   # Lists of all possible
         phis = [k*pi/n for k in range(1,n)]     # thetas and phis
 
         # Start with only the north and south poles
-        self._points = [(0,0,r,0),(0,0,-r,0)]
-        self._edges = [(0, k*(n-1)+2) for k in range(n)]
-        self._edges.extend([(1, (k+1)*(n-1)+1) for k in range(n)])
+        points = [(0,0,r,0),(0,0,-r,0)]
+        edges = [(0, k*(n-1)+2) for k in range(n)]
+        edges.extend([(1, (k+1)*(n-1)+1) for k in range(n)])
+
         for t in range(n-1):    # Add all thetas and phis as points and edges
-            self._points.extend([convert((r, thetas[t], phis[k], pi/2), True)
-                                 for k in range(n-1)])
-            self._edges.extend([(t*(n-1)+k+2, t*(n-1)+k+3)
-                                for k in range(n-2)])
-            self._edges.extend([(k*(n-1)+t+2, ((k+1)*(n-1)%((n-1)*n)+t+2))
-                                for k in range(n)])
+            points.extend([convert((r, thetas[t], phis[k], pi/2), True)
+                           for k in range(n-1)])
+            edges.extend([(t*(n-1)+k+2, t*(n-1)+k+3) for k in range(n-2)])
+            edges.extend([(k*(n-1)+t+2, ((k+1)*(n-1) % ((n-1)*n)+t+2))
+                          for k in range(n)])
+
         # End by adding in the last points and connecting their edges
-        self._points.extend([convert((r, thetas[n-1], phis[k], pi/2), True)
-                             for k in range(n-1)])
-        self._edges.extend([((n-1)*(n-1)+k+2, (n-1)*(n-1)+k+3)
-                            for k in range(n-2)])
+        points.extend([convert((r, thetas[n-1], phis[k], pi/2), True)
+                       for k in range(n-1)])
+        edges.extend([((n-1)*(n-1)+k+2, (n-1)*(n-1)+k+3) for k in range(n-2)])
 
-    def get_points(self):
-        """
-        Return a list of points of the sphere.
-        return: a list of points of the sphere (list)
-                all elements are in Cartesian coordinates (list, len=4)
-        """
-        return self._points
+        super().__init__(points, edges)
 
-    def get_edges(self):
-        """
-        Return a list of edges of the sphere.
-        return: a list of edges of the sphere (list)
-                all elements are lists of edge endpoints (list, len=2)
-                all elements are point indices (int)
-        """
-        return self._edges
 
-    def set_rotaxis(self, axes):
-        """
-        Set the perpendicular unit axes of rotation of the sphere.
-        axes: the perpendicular unit axes of rotation (list, len=2)
-              all elements are in Cartesian coordinates (list, len=4)
-        """
-        self._axis_i = normalize(axes[0])
-        self._axis_j = normalize(axes[1])
 
-    def rotate(self, rotAngle):
+class Axes(Object):
+
+    """
+    Drawing class that stores the four orthogonal unit coordinate axes.
+
+    Inherited methods:
+    __init__            Construct Axes class.
+    get_points          Return a list of points of the axes.
+    get_edges           Return a list of edges of the axes.
+    set_rotaxis         Set the rotation axis-plane of the axes.
+    rotate              Rotate the axes.
+
+    Inherited variables:
+    _points             The points of the axes (list)
+                            elements are in Cartesian coordinates (list)
+    _edges              The edges of the axes (list)
+                            elements are lists of point indices (list)
+    _axis_i             A basis vector of the rotation axis-plane (list)
+    _axis_j             A basis vector, both in Cartesian coordinates (list)
+    """
+
+    def __init__(self):
         """
-        Rotate the current sphere.
-        rotAngle: the angle to rotate the current sphere by (float)
+        Construct Axes class.
         """
-        i = self._axis_i
-        j = self._axis_j
-        cos = math.cos(rotAngle)
-        sin = math.sin(rotAngle)
-        for n in range(len(self._points)):
-            p = self._points[n]
-            r = sum([p[t]*i[t] for t in range(4)])
-            s = sum([p[t]*j[t] for t in range(4)])
-            I = [i[t]*r+j[t]*s for t in range(4)]
-            ip = [p[t]-I[t] for t in range(4)]
-            if ip != [0,0,0,0]:
-                iq = cross4D(ip, i, j, ip)
-                self._points[n] = [ip[t]*cos+iq[t]*sin + I[t]
-                                   for t in range(4)]
+        points = [(1,0,0,0), (-1,0,0,0), (0,1,0,0), (0,-1,0,0),
+                  (0,0,1,0), (0,0,-1,0), (0,0,0,1), (0,0,0,-1)]
+        edges = [(0,1), (2,3), (4,5), (6,7)]
+        super().__init__(points, edges)
 
 
 
