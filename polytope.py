@@ -1,17 +1,19 @@
 """
-Polytope Player v0.86
+Polytope Player v0.87
 
 This program lets you play with polytopes!
-The coordinate axes are now separate entities from the radial sphere,
-and all of those canvas objects (Polytope, Sphere, Axes) now inherit
-from a general Object class that manages points, edges, and rotations.
+The Canvas class is now split into two classes:
+Canvas to rotate and display the polytope, and
+Creator to actually translate and create it.
+The transition went generally alright, though
+I ought to really create some unit tests...
 """
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
 import random
 
-TITLE = 'Polytope Player v0.86'
+TITLE = 'Polytope Player v0.87'
 DESCRIPTION = '\nThis script lets you play with polytopes.'
 WIDTH = 600
 HEIGHT = 550
@@ -45,7 +47,7 @@ COLOURS = [('#000', '#F00', '#00F'),    # Temporary hardcoded constant colours
 
 
 
-def distance(head, tail=[0,0,0,0]):
+def distance2(head, tail=[0,0,0,0]):
     """
     Find the distance squared between two points.
 
@@ -64,10 +66,10 @@ def normalize(points, unit=[1]):
     unit: the second vector (list), default [1] to make unit vector
     return: vector with magnitude of unit in the direction of points (list)
     """
-    norm = math.sqrt(distance(points))
+    norm = math.sqrt(distance2(points))
     if norm == 0:
         return [0 for x in points]
-    magnitude = math.sqrt(distance(unit))
+    magnitude = math.sqrt(distance2(unit))
     return [x/norm*magnitude for x in points]
 
 def cross3D(u, v, unit=[1]):
@@ -242,7 +244,6 @@ class Main(ttk.Frame):
         menuBar.add_cascade(label='File', menu=fileMenu, underline=0)
 
     def _make_popups(self, popUpType):
-
         # Create the actual pop-up windows.
         # popUpType: the type of pop-up window to make (str)
         #            'About', 'Help'
@@ -285,7 +286,6 @@ class Main(ttk.Frame):
         self.wait_window(popUpFrame)
 
     def _initUI(self):
-
         # Initialize GUI placement and bind buttons.
 
         # Must keep references to avoid garbage-collection
@@ -318,7 +318,6 @@ class Main(ttk.Frame):
         guiBottom.columnconfigure(0, weight=1)
         guiBottom.grid(row=2, column=0, columnspan=2,
                         padx=10, pady=(0,20), sticky=tk.E+tk.W)
-
 
         # Grid guiRight widgets: 21 rows, 3 columns
 
@@ -418,7 +417,6 @@ class Main(ttk.Frame):
                           variable=v, command=lambda event: self.change('s'))
             s.grid(row=20, column=i)
 
-
         # Grid guiBottom widgets: 5 rows, 7 columns
 
         # Grid status label, text box, and link them to statusText, inputText
@@ -491,7 +489,9 @@ class Main(ttk.Frame):
         self.dist = tk.IntVar()
         distDisplay = ttk.Label(guiBottom, textvariable=self.dist)
         distDisplay.grid(row=4, column=4, columnspan=3, sticky=tk.E)
+
         self.change('r')    # Set initial zoom and distance in change
+        self.canvas.reset() # Set initial settings in canvas
 
     def _valid(self, entry, to):
         # Ensure that scale entry inputs are valid.
@@ -565,14 +565,12 @@ class Main(ttk.Frame):
             self.statusText.set(faceText)
 
     def change(self, change=None, value=0):
-
         """
         Change GUI values (checkboxes, zoom, distance) and re-render.
         change: the type of change to make (str)
                 'b', 'w', '3', 's', 'r', 'z', 'z+', 'z-', 'd', 'd+', 'd-'
         value: the value to change to (float), default 0
         """
-
         if change == None:      # When checkboxes are ticked, just re-render
             pass
         elif change == 'b':     # Disable 'b' barBtn if polyhedron has no snub
@@ -616,7 +614,6 @@ class Main(ttk.Frame):
                                    (self.lred, self.lgreen, self.lblue)])
             self.canvas.set_view([s.get() for s in
                                   (self.vtheta, self.vphi, self.vomega)])
-
 
         elif change == 'li':
             self.lint.set('{0:.2f}'.format(value))
@@ -682,397 +679,82 @@ class Main(ttk.Frame):
 
 
 
-class Canvas(tk.Canvas):
+class Creator():
 
     """
-    Display class that manages polytope creation, edits, and display.
+    Mathematical class that manages polytope creation.
 
     Public methods:
-    set_light           Change properties of the lighting and re-render.
-    set_colours         Change various colour settings and re-render.
-    set_rotax           Change the rotation axis-plane and re-render.
-    set_bar             Change the generating point and re-render.
-    set_view            Change the current viewing axis and re-render.
-    rotate              Rotate polytope on button press and re-render.
-    get_data            Return data about the current polytope.
-    take_input          Take text input from input box.
-    render              Clear the canvas and display the objects.
-
-    Public variables:
-    parent              Parent of class (Main)
-    rotAxis             The rotation plane's basis vectors (list)
+    get_polytope        Get the polytope created during initialization.
 
     Private methods:
-    __init__            Construct Canvas class.
-    _translate          Translate text input to return a Polytope object.
+    __init__            Construct Creator class.
     _schlafli2D         Create a polygon using a 2D Schläfli symbol.
     _schlafli3D         Create a polyhedron using a 3D Schläfli symbol.
     _wythoff            Create a polyhedron using a Wythoff symbol.
     _wythoff_snub       Find the generating point of a snub polyhedron.
     _schwarz            Reflect the generating point everywhere.
-    _view               Project 4D points on the viewing plane.
-    _reset              Clear the canvas and reset all variables.
 
     Private variables:
-    _hasPolytope        To keep track of if the polytope exists (bool)
-    _currPolytope       Instance of Polytope class (Polytope)
-    _sphere             Instance of Sphere class (Sphere)
-    _axes               Instance of Axes class (Axes)
+    _polytope           The polytope created during initialization (Polytope)
     _currWythoff        To keep track of the current Wythoff numbers (list)
     _noSnub             To keep track of if the snub does not exist (bool)
-    _lightColour        The current light colour (list)
-    _vertexColours      The colour of vertices in wire mode (list)
-    _edgeColours        The colour of edges in wire mode (list)
-    _baseColours        The colour of polygonal faces (dict)
-    _sphereColours      The colours of the sphere overlay (list)
-    _menuColours        The colours of menus and the GUI (list)
     """
 
-    def __init__(self, parent):
+    def __init__(self, entry):
         """
-        Construct Canvas class.
-        parent = the parent of canvas (Main)
+        Construct Creator class.
+        entry: the text input (str): '{d}', '{d/d}', '{d,d}', '(d | d d)' etc.
         """
-        self.parent = parent
-        tk.Canvas.__init__(self, parent, relief=tk.GROOVE,
-                           background=COLOURS[4][1],
-                           borderwidth=5, width=300, height=200)
-        self._hasPolytope = False
-        self._currPolytope = Polytope([])   # Blank polytope is empty list
-        self._currWythoff = ['2','2','2']
-        self._noSnub = 0
-        self._reset()
-
-    def set_light(self, lcol):
-        """
-        Change properties of the lighting and re-render.
-        lcol: the light colour in RGB integers between 0 and 255 (list, len=3)
-        """
-        self._lightColour = lcol
-        try:
-            self.parent.lred.set('{0:.0f}'.format(self._lightColour[0]))
-            self.parent.lgreen.set('{0:.0f}'.format(self._lightColour[1]))
-            self.parent.lblue.set('{0:.0f}'.format(self._lightColour[2]))
-        except:
-            pass    # Light colour scales not loaded yet, fix this soon!
-        if self._hasPolytope:
-            self.parent.set_status('lcol')
-        self.render()
-
-    def set_colours(self,vcol=None,ecol=None,bcol=None,scol=None,mcol=None):
-        """
-        Change various colour settings and re-render.
-
-        vcol: the colour of vertices in wireframe mode (list, len=3)
-        ecol: the colour of edges in wireframe mode (list, len=6)
-        bcol: the colour of different types of polygonal faces (dict, 3:22)
-        scol: the colours of the sphere overlay (list, len=4)
-        mcol: the colours of menus and the GUI (list, len=3)
-        All defaults are None, colours are in RGB integers between 0 and 255.
-        """
-        if vcol:
-            self._vertexColours = vcol
-        if ecol:
-            self._edgeColours = ecol
-        if bcol:
-            self._baseColours = bcol
-        if scol:
-            self._sphereColours = scol
-        if mcol:
-            self._menuColours = mcol
-        if self._hasPolytope:
-            self.render()
-
-    def set_rotax(self, rotAxis):
-        """
-        Change the current rotation axis-plane and re-render.
-        rotAxis: the rotation axis-plane as a list of two axes (list, len=2)
-                 all elements are in spherical coordinates (list, len=4)
-        """
-        if rotAxis == 'xw':
-            self.rotAxis = [(1,0,0,0),(0,0,0,1)]
-        elif rotAxis == 'yw':
-            self.rotAxis = [(0,1,0,0),(0,0,0,1)]
-        elif rotAxis == 'zw':
-            self.rotAxis = [(0,0,1,0),(0,0,0,1)]
-        elif rotAxis == 'xy':
-            self.rotAxis = [(1,0,0,0),(0,1,0,0)]
-        elif rotAxis == 'yz':
-            self.rotAxis = [(0,1,0,0),(0,0,1,0)]
-        elif rotAxis == 'xz':
-            self.rotAxis = [(1,0,0,0),(0,0,1,0)]
-        else:
-            self.rotAxis = rotAxis  # Manual input, not button press
-        self._currPolytope.set_rotaxis(self.rotAxis)
-        self._sphere.set_rotaxis(self.rotAxis)
-        self._axes.set_rotaxis(self.rotAxis)
-        self.render()
-        if self._hasPolytope:
-            self.parent.set_status('rot')
-
-    def set_bar(self, bar):
-        """Change the Wythoff generating point and re-render."""
-        self._currPolytope = Polytope(self._wythoff(selection=bar))
-        self._hasPolytope = True
-        self._reset()   # Treat it as a new polytope
-        self.render()
-
-    def set_view(self, viewAxis):
-        """
-        Change the current viewing axis and re-render.
-        viewAxis: the viewing axis in spherical coordinates (list, len=3)
-        """
-        self._viewAxis = satisfy_axis_restrictions(viewAxis)
-        try:
-            self.parent.vtheta.set('{0:.2f}'.format(self._viewAxis[0]))
-            self.parent.vphi.set('{0:.2f}'.format(self._viewAxis[1]))
-            self.parent.vomega.set('{0:.2f}'.format(self._viewAxis[2]))
-        except:
-            pass    # Camera position scales not loaded yet, fix this soon!
-        self.render()
-        # Since _reset resets all changes, only update status if has polytope
-        if self._hasPolytope:
-            self.parent.set_status('view')
-
-    def rotate(self, direction, rotAngle=ROTANGLE):
-        """
-        Rotate polytope on button press and re-render.
-        direction: left is 0, right is 1 (int)
-        rotAngle: number of radians to rotate (float), default ROTANGLE
-        """
-        if direction == 0:
-            self._currPolytope.rotate(rotAngle)
-            self._sphere.rotate(rotAngle)
-            self._axes.rotate(rotAngle)
-        elif direction == 1:    # Opposite direction is backwards rotation
-            self._currPolytope.rotate(-rotAngle)
-            self._sphere.rotate(-rotAngle)
-            self._axes.rotate(-rotAngle)
-        self.render()
-
-    def get_data(self, event):
-        """
-        Return data about the current polytope.
-        event: the type of data to return (str)
-               'view', 'lcol', 'rot', 'faces', 'star'
-        return: some data to put on the status bar (str)
-        """
-        if event == 'view':
-            return ', '.join(['{0:.2f}'.format(self._viewAxis[i])
-                              for i in range(3)])
-        if event == 'lcol':
-            return ', '.join([str(self._lightColour[i]) for i in range(3)])
-        if event == 'rot':
-            u = ', '.join(['{0:.2f}'.format(self.rotAxis[0][i])
-                           for i in range(4)])
-            v = ', '.join(['{0:.2f}'.format(self.rotAxis[1][i])
-                           for i in range(4)])
-            return u + ' and ' + v
-        if event == 'faces':
-            return self._currPolytope.get_face_sides()
-        if event == 'star':
-            return self._currPolytope.star
-
-
-    def take_input(self, event):
-        """Take text input from input box."""
-        translatedInput = self._translate(self.parent.inputText.get())
-        if translatedInput == ValueError:   # Lots of them in _translate
-            self.parent.set_status('badinput')
-        elif translatedInput:
-            self._currPolytope = translatedInput
-            self._reset()   # Create new polytope using input and reset
-        self.parent.inputText.set('')   # Clear the input box
-
-    def _translate(self, entry):
-
-        # Translate text input to return a Polytope object.
-        # entry: the input (str), 0 is float, 1 is int, f is frac or int
-        #        general: '', 'clear', 'reset', 'quit', 'exit', 'close'
-        #        zoom/dist/view: 'z0', 'd0', 'v0,0', 'v0,0,0'
-        #        light: 'la0,0', 'la0,0,0', 'lc1,1,1', 'li0'
-        #        rotaxis: 'r0,0,0', 'r0,0,0,0/0,0,0,0'
-        #        schlafli: '{f}', '{f,f}', '{3,3,3}', '{4,3,3}', '{3,3,4}'
-        #        wythoff: '(f f f)', '(| f f f)', '(f | f f)', etc.
-        # return: the polytope represented by entry (Polytope)
-
-        if entry == ('' or 'clear' or 'reset'): # Clear canvas
-            self.parent.set_status('clear')
-            self._hasPolytope = False
-            return Polytope([])
-
-        elif entry == ('quit' or 'exit' or 'close'):    # Close the program
-            self.parent.close()
-
-
-        elif entry.startswith('z'):             # Set zoom
-            try:
-                zoom = int(entry[1:])
-                if zoom < 1:            # Zoom must be positive
-                    return ValueError
-                self.parent.change('z', zoom)
-                return
-            except:
-                return ValueError
-
-        elif entry.startswith('d'):             # Set distance
-            try:
-                distance = int(entry[1:])
-                if distance < 1:
-                    return ValueError
-                self.parent.change('d', distance)
-                return
-            except:
-                return ValueError
-
-        elif entry.startswith('v'):             # Set viewing axis
-            try:
-                viewAxis = [float(num) for num in entry[1:].split(',')]
-                if len(viewAxis) < 3:   # Add omega if axis specified in 3D
-                    viewAxis.append(pi/2)
-                if len(viewAxis) != 3:  # After adding omega, length must be 3
-                    return ValueError
-                self.set_view(viewAxis)
-                return
-            except:
-                return ValueError
-
-
-        elif entry.startswith('li'):            # Set light intensity
-            try:
-                lint = float(entry[2:])
-                if lint < 0 or lint > 2:
-                    return ValueError
-                self.parent.change('li', lint)
-                return
-            except:
-                return ValueError
-
-        elif entry.startswith('la'):            # Set light axis
-            try:
-                laxis = [float(num) for num in entry[2:].split(',')]
-                if len(laxis) < 3:
-                    laxis.append(pi/2)
-                if len(laxis) != 3:
-                    return ValueError
-                self.change('la', laxis)
-                return
-            except:
-                return ValueError
-
-        elif entry.startswith('lc'):            # Set light colour
-            try:
-                lightColour = [int(num) for num in entry[2:].split(',')]
-                if len(lightColour) != 3:
-                    return ValueError
-                self.set_light(lightColour)
-                return
-            except:
-                return ValueError
-
-
-        elif entry.startswith('r'):             # Set rotation axis
-            try:
-                rotAxis = entry[1:].split('/')
-                if len(rotAxis) == 2:       # 3D rotation plane, two vectors
-                    u = list(map(float, rotAxis[0].split(',')))
-                    v = list(map(float, rotAxis[1].split(',')))
-                    if (len(u) != 4 or len(v) != 4):
-                        return ValueError
-                    self.set_rotax((u, v))
-                elif len(rotAxis) == 1:     # 2D rotation axis, one vector
-                    u = list(map(float, rotAxis[0].split(',')))
-                    if len(u) == 3:
-                        u.append(0)         # Cartesian coordinates, add 0
-                    if len(u) != 4:
-                        return ValueError
-                    v = [0,0,0,1]           # Create 3D rotation plane
-                else:
-                    return ValueError
-                self.set_rotax((u, v))
-                return
-            except:
-                return ValueError
-
-
-        """
-        # Currently broken since their radius results in negative edge colours
-        elif entry == '{3,3,3}':            # Pentachoron, side-length 4r
-            r = 2*RADIUS
-            self._hasPolytope = True
-            return Polytope((
-                [[r/math.sqrt(10),r/math.sqrt(6),r/math.sqrt(3),r],
-                 [r/math.sqrt(10),r/math.sqrt(6),r/math.sqrt(3),-r],
-                 [r/math.sqrt(10),r/math.sqrt(6),-2*r/math.sqrt(3),0],
-                 [r/math.sqrt(10),-r*math.sqrt(3/2),0,0],
-                 [-2*r*math.sqrt(2/5),0,0,0]],
-                ((0,1),(0,2),(0,3),(0,4),(1,2),
-                 (1,3),(1,4),(2,3),(2,4),(3,4)),
-                [(k, 0) for k in range(5)]))
-
-        elif entry == '{4,3,3}':            # Tesseract, side-length 2r
-            r = RADIUS
-            self._hasPolytope = True
-            return Polytope((
-                 [[r,r,r,r],[r,r,r,-r],[r,r,-r,r],[r,r,-r,-r],
-                  [r,-r,r,r],[r,-r,r,-r],[r,-r,-r,r],[r,-r,-r,-r],
-                  [-r,r,r,r],[-r,r,r,-r],[-r,r,-r,r],[-r,r,-r,-r],
-                  [-r,-r,r,r],[-r,-r,r,-r],[-r,-r,-r,r],[-r,-r,-r,-r]],
-                 ((0,1),(1,3),(3,2),(2,0),(12,13),(13,15),(15,14),(14,12),
-                  (4,5),(5,7),(7,6),(6,4),(8,9),(9,11),(11,10),(10,8),
-                  (0,4),(1,5),(2,6),(3,7),(8,12),(9,13),(10,14),(11,15),
-                  (0,8),(1,9),(2,10),(3,11),(4,12),(5,13),(6,14),(7,15)),
-                 [(k, 0) for k in range(16)]))
-
-        elif entry == '{3,3,4}':            # Hexadecachoron, side-length 4r
-            r = 2*RADIUS
-            self._hasPolytope = True
-            return Polytope((
-                [[r,0,0,0],[-r,0,0,0],[0,r,0,0],[0,-r,0,0],
-                 [0,0,r,0],[0,0,-r,0],[0,0,0,r],[0,0,0,-r]],
-                ((0,2),(0,3),(0,4),(0,5),(0,6),(0,7),
-                 (1,2),(1,3),(1,4),(1,5),(1,6),(1,7),
-                 (2,4),(2,5),(2,6),(2,7),(3,4),(3,5),
-                 (3,6),(3,7),(4,6),(4,7),(5,6),(5,7)),
-                [(k, 0) for k in range(8)]))
-        """
-
-
-        # Schlafli symbol: {p/d} or {p,q}
+        self._polytope = None
+        self._currWythoff = None
+        self._noSnub = None
         if entry.startswith('{') and entry.endswith('}'):
             try:
                 if ',' in entry:
-                    self._hasPolytope = True
-                    return Polytope(self._schlafli3D(entry[1:-1]))
+                    self._polytope = Polytope(self._schlafli3D(entry[1:-1]))
                 else:
-                    self._hasPolytope = True
-                    return Polytope(self._schlafli2D(entry[1:-1]))
-            except:
-                return ValueError
+                    self._polytope = Polytope(self._schlafli2D(entry[1:-1]))
+            except ValueError:
+                self._polytope = None
 
-        # Wythoff symbol: (p q s)
         elif entry.startswith('(') and entry.endswith(')'):
             try:
                 if entry[1] == '|':
-                    while True: # Las Vegas algorithm, repeat until success
-                        polytope = Polytope(self._wythoff(entry[1:-1]))
-                        if polytope.get_points():
-                            self._hasPolytope = True
-                            return polytope
+                    # Las Vegas algorithm, repeat until success
+                    while self._polytope == None:
+                        points, edges, colours, self._currWythoff, \
+                            self._noSnub = self._wythoff(entry[1:-1])
+                        self._polytope = Polytope([points, edges, colours])
                 else:
-                    self._hasPolytope = True
-                    return Polytope(self._wythoff(entry[1:-1]))
+                    points, edges, colours, self._currWythoff, \
+                        self._noSnub = self._wythoff(entry[1:-1])
+                    self._polytope = Polytope([points, edges, colours])
             except ValueError:
-                return ValueError
-
+                self._polytope = None
         else:
-            return ValueError
+            self._polytope = None
+
+    def get_polytope(self):
+        """
+        Get the polytope created during initialization.
+        return: the polytope created during initialization (Polytope)
+        """
+        return self._polytope
+
+    def get_wythoff(self):
+        """
+        Get the Wythoff variables created during initialization.
+        return: the fundamental triangle numbers (list, len=3) and
+                if the generated polyhedron cannot be snubbed (bool)
+        """
+        return self._currWythoff, self._noSnub
 
     def _schlafli2D(self, entry):
         # Create a polygon using a 2D Schläfli symbol.
         # entry: the 2D Schläfli symbol (str)
-        #        {p} or {p/d}, where p and d are ints
-        # return: the polygon represented by entry (Polytope)
+        #        p or p/d where p and d are ints
+        # return: the [points, edges, pointColours] of the polygon
         num = entry.split('/')
         p = int(num[0])
         if len(num) == 1:
@@ -1084,18 +766,17 @@ class Canvas(tk.Canvas):
         rs = [RADIUS]*p         # radius, phi, and omega are all the same
         phis = [pi/2]*p
         omegas = [pi/2]*p
-        points = [convert((rs[n], thetas[n], phis[n], omegas[n]), True)
-                  for n in range(len(thetas))]
+        points = [convert((rs[i], thetas[i], phis[i], omegas[i]), True)
+                  for i in range(len(thetas))]
         colours = [(k,0) for k in range(p)]
         edges = [(k,(k+1)%p) for k in range(p)] # Connect points to next ones
         return points, edges, colours
 
     def _schlafli3D(self, entry):
-
         # Create a polyhedron using a 3D Schläfli symbol.
         # entry: the 3D Schläfli symbol (str)
-        #        {p,q}, where p and q are ints (no support for star polyhedra)
-        # return: the polyhedron represented by entry (Polytope)
+        #        p,q where p and q are ints (no support for star polyhedra)
+        # return: the [points, edges, pointColours] of the polyhedron
 
         num = entry.split(',')
         p = int(num[0])
@@ -1173,42 +854,45 @@ class Canvas(tk.Canvas):
 
         rs = [RADIUS]*len(thetas)   # radius and omega are all the same
         omegas = [pi/2]*len(thetas)
-        points = [convert((rs[n], thetas[n], phis[n], omegas[n]), True)
-                  for n in range(len(thetas))]
+        points = [convert((rs[i], thetas[i], phis[i], omegas[i]), True)
+                  for i in range(len(thetas))]
         colours = [(k, 0) for k in range(len(thetas))]
         return points, edges, colours
 
-    def _wythoff(self, entry=None, selection='a'):
-
+    def _wythoff(self, entry):
         # Create a polyhedron using a Wythoff symbol.
-        # entry: the Wythoff symbol (str), default is None
-        #        p/d | q/c s/b, where p, q, s are ints; d, c, b are optional;
+        # entry: the Wythoff symbol (str)
+        #        p/d | q/c s/b where p, q, s are ints; d, c, b are optional;
         #        | can be placed anywhere; but all are separated by spaces
-        # selection: the location to place | (str), default is a
-        #             a = p q s      b = | p q s    c = p q s |
-        #             p = p | q s    q = q | s p    s = s | p q
-        #            pq = p q | s   qs = q s | p   qp = s p | q
-        # return: the polyhedron represented by entry (Polytope)
+        # return: points, edges, pointColours, symbol, noSnub (list, len=5)
+        #         [points, edges, pointColours] are of the Wythoff polyhedron
+        #         symbol has the fundamental triangle numbers (list, len=3)
+        #         noSnub is true if the symbol cannot be snubbed (bool)
 
         r = RADIUS
         edges = []
         colours = []
 
         # Store entry as list of numbers (symbol)
-        if not entry:        # entry is None when called by set_bar
-            symbol = self._currWythoff
-        else:                # Otherwise, find where the bar is and remove it
-            symbol = entry.split()
-            if len(symbol) == 4:
-                if symbol.index('|') == 0:
-                    selection = 'b'
-                elif symbol.index('|') == 1:
-                    selection = 'p'
-                elif symbol.index('|') == 2:
-                    selection = 'pq'
-                elif symbol.index('|') == 3:
-                    selection = 'c'
-                symbol.remove('|')
+        # selection: the location to place the bar (str)
+        #             a = p q s      b = | p q s    c = p q s |
+        #             p = p | q s    q = q | s p    s = s | p q
+        #            pq = p q | s   qs = q s | p   qp = s p | q
+        symbol = entry.split()
+        if len(symbol) == 3:
+            selection = 'a'
+        elif len(symbol) == 4:
+            if symbol.index('|') == 0:
+                selection = 'b'
+            elif symbol.index('|') == 1:
+                selection = 'p'
+            elif symbol.index('|') == 2:
+                selection = 'pq'
+            elif symbol.index('|') == 3:
+                selection = 'c'
+            symbol.remove('|')
+        else:
+            raise ValueError
 
         # Extract from symbol each Wythoff number (p,q,s)
         pqs = []
@@ -1229,16 +913,14 @@ class Canvas(tk.Canvas):
                         (math.sin(pi/q)*math.sin(pi/s)))
         lsp = math.acos((math.cos(pi/q) + math.cos(pi/s)*math.cos(pi/p))/
                         (math.sin(pi/s)*math.sin(pi/p)))
-        self._currWythoff = symbol
 
         # Check if the snub version exists, and disable its button if not
-        if sorted(self._currWythoff) in SNUBABLE:
-            self._noSnub = 0
+        if sorted(symbol) in SNUBABLE:
+            noSnub = 0
         else:
             if selection == 'b':
                 raise ValueError
-            else:
-                self._noSnub = 1
+            noSnub = 1
 
         # Find fundamental Schwarz triangle
         triangles = [[[0.0 if abs(x) < EPSILON else x for x in
@@ -1254,6 +936,7 @@ class Canvas(tk.Canvas):
         # Find the generating point within that triangle
         if selection == 'a':
             n = [0.0,0.0,0.0,0.0]   # No generating point needed
+
         elif selection == 'c':
             # Find the angle bisectors on two sides
             op = normalize(triangles[0][0], [r])
@@ -1280,6 +963,7 @@ class Canvas(tk.Canvas):
             ns = cross3D(on, os)
             mq = cross3D(om, oq)
             n = cross3D(mq, ns, [r]) + [0.0]    # Centre of the triangle
+
         elif selection == 'p':
             n = triangles[0][0]                 # p vertex of the triangle
             colour = 0
@@ -1289,6 +973,7 @@ class Canvas(tk.Canvas):
         elif selection == 's':
             n = triangles[0][2]                 # s vertex of the triangle
             colour = 2
+
         elif selection == 'pq':
             # Find length on great circle pq
             pn = math.atan2(math.sin(lsp), (
@@ -1339,14 +1024,13 @@ class Canvas(tk.Canvas):
         # Connect all points to points side away if uniform polyhedron
         else:
             colours = [(k, 0) for k in range(len(points))]
-            for n in range(len(points)):
-                for k in range(n+1, len(points)):
-                    if abs(distance(points[n], points[k]) - side) < 2:
-                        edges.append((n,k))
-        return points, edges, colours
+            for i in range(len(points)):
+                for j in range(i+1, len(points)):
+                    if abs(distance2(points[i], points[j]) - side) < 2:
+                        edges.append((i,j))
+        return points, edges, colours, symbol, noSnub
 
     def _wythoff_snub(self, p, q, s):
-
         # Find the generating point of a snub Wythoff polyhedron.
         # p, q, s: the Wythoff numbers of the polyhedron (floats)
         # return: the generating point in Cartesian coordinates (list, len=4)
@@ -1451,7 +1135,6 @@ class Canvas(tk.Canvas):
         return n
 
     def _schwarz(self, selection, triangles, n):
-
         # Reflect the generating point everywhere.
         # selection: the lype of reflection (str)
         #            a = reflect every triangle vertex
@@ -1461,8 +1144,8 @@ class Canvas(tk.Canvas):
         #            all elements are lists of vertices (list, len=3)
         #            all vertices are in Cartesian coordinates (list, len=4)
         # n: the generating point in Cartesian coordinates (list, len=4)
-        # return: the points and side length of the polyhedron (list, len=2)
-        #         the points are in a list of verticel (list)
+        # return: the points and side length squared (list, len=2)
+        #         the points are in a list of vertices (list)
         #         all vertices are in Cartesian coordinates (list, len=4)
 
         depth = 16  # Depth to reflect until
@@ -1566,8 +1249,308 @@ class Canvas(tk.Canvas):
             depth -= 1
         return points, side
 
-    def _view(self, points):
 
+
+class Canvas(tk.Canvas):
+
+    """
+    Display class that manages object rotation and display.
+
+    Public methods:
+    set_light           Change properties of the lighting and re-render.
+    set_colours         Change various colour settings and re-render.
+    set_rotax           Change the rotation axis-plane and re-render.
+    set_bar             Change the generating point and re-render.
+    set_view            Change the current viewing axis and re-render.
+    rotate              Rotate polytope on button press and re-render.
+    get_data            Return data about the current polytope.
+    take_input          Take text input from input box.
+    render              Clear the canvas and display the objects.
+    reset               Clear the canvas and reset all variables.
+
+    Public variables:
+    parent              Parent of class (Main)
+    rotAxis             The rotation plane's basis vectors (list)
+
+    Private methods:
+    _view               Project 4D points on the viewing plane.
+
+    Private variables:
+    _currPolytope       Instance of Polytope class (Polytope)
+    _sphere             Instance of Sphere class (Sphere)
+    _axes               Instance of Axes class (Axes)
+    _currWythoff        To keep track of the current Wythoff numbers (list)
+    _noSnub             To keep track of if the snub does not exist (bool)
+    _lightColour        The current light colour (list)
+    _vertexColours      The colour of vertices in wire mode (list)
+    _edgeColours        The colour of edges in wire mode (list)
+    _baseColours        The colour of polygonal faces (dict)
+    _sphereColours      The colours of the sphere overlay (list)
+    _menuColours        The colours of menus and the GUI (list)
+    """
+
+    def __init__(self, parent):
+        """
+        Construct Canvas class.
+        parent: the parent of canvas (Main)
+        """
+        self.parent = parent
+        tk.Canvas.__init__(self, parent, relief=tk.GROOVE,
+                           background=COLOURS[4][1],
+                           borderwidth=5, width=300, height=200)
+        self._currPolytope = Polytope([])   # Empty polytope to rotate
+        self._currWythoff = ['2','2','2']
+        self._noSnub = 0
+
+    def set_light(self, lcol):
+        """
+        Change properties of the lighting and re-render.
+        lcol: the light colour in RGB integers between 0 and 255 (list, len=3)
+        """
+        self._lightColour = lcol
+        try:
+            self.parent.lred.set('{0:.0f}'.format(self._lightColour[0]))
+            self.parent.lgreen.set('{0:.0f}'.format(self._lightColour[1]))
+            self.parent.lblue.set('{0:.0f}'.format(self._lightColour[2]))
+        except:
+            pass    # Light colour scales not loaded yet, fix this soon!
+        self.parent.set_status('lcol')
+        self.render()
+
+    def set_colours(self,vcol=None,ecol=None,bcol=None,scol=None,mcol=None):
+        """
+        Change various colour settings and re-render.
+
+        vcol: the colour of vertices in wireframe mode (list, len=3)
+        ecol: the colour of edges in wireframe mode (list, len=6)
+        bcol: the colour of different types of polygonal faces (dict, 3:22)
+        scol: the colours of the sphere overlay (list, len=4)
+        mcol: the colours of menus and the GUI (list, len=3)
+        All defaults are None, colours are in RGB integers between 0 and 255.
+        """
+        if vcol:
+            self._vertexColours = vcol
+        if ecol:
+            self._edgeColours = ecol
+        if bcol:
+            self._baseColours = bcol
+        if scol:
+            self._sphereColours = scol
+        if mcol:
+            self._menuColours = mcol
+        self.render()
+
+    def set_rotax(self, rotAxis):
+        """
+        Change the current rotation axis-plane and re-render.
+        rotAxis: the rotation axis-plane as a list of two axes (list, len=2)
+                 all elements are in spherical coordinates (list, len=4)
+        """
+        if rotAxis == 'xw':
+            self.rotAxis = [(1,0,0,0),(0,0,0,1)]
+        elif rotAxis == 'yw':
+            self.rotAxis = [(0,1,0,0),(0,0,0,1)]
+        elif rotAxis == 'zw':
+            self.rotAxis = [(0,0,1,0),(0,0,0,1)]
+        elif rotAxis == 'xy':
+            self.rotAxis = [(1,0,0,0),(0,1,0,0)]
+        elif rotAxis == 'yz':
+            self.rotAxis = [(0,1,0,0),(0,0,1,0)]
+        elif rotAxis == 'xz':
+            self.rotAxis = [(1,0,0,0),(0,0,1,0)]
+        else:
+            self.rotAxis = rotAxis  # Manual input, not button press
+        self._currPolytope.set_rotaxis(self.rotAxis)
+        self._sphere.set_rotaxis(self.rotAxis)
+        self._axes.set_rotaxis(self.rotAxis)
+        self.parent.set_status('rot')
+        self.render()
+
+    def set_bar(self, bar):
+        """
+        Change the Wythoff generating point and re-render.
+        bar: the type of generating point (str)
+        """
+        p = str(self._currWythoff[0])
+        q = str(self._currWythoff[1])
+        s = str(self._currWythoff[2])
+        if bar == 'a':
+            symbol = ' '.join(['(',p,q,s,')'])
+        elif bar == 'b':
+            symbol = ' '.join(['(','|',p,q,s,')'])
+        elif bar == 'c':
+            symbol = ' '.join(['(',p,q,s,'|',')'])
+        elif bar == 'p':
+            symbol = ' '.join(['(',p,'|',q,s,')'])
+        elif bar == 'q':
+            symbol = ' '.join(['(',q,'|',s,p,')'])
+        elif bar == 's':
+            symbol = ' '.join(['(',s,'|',p,q,')'])
+        elif bar == 'pq':
+            symbol = ' '.join(['(',p,q,'|',s,')'])
+        elif bar == 'qs':
+            symbol = ' '.join(['(',q,s,'|',p,')'])
+        elif bar == 'sp':
+            symbol = ' '.join(['(',s,p,'|',q,')'])
+        creator = Creator(symbol)
+        self._currPolytope = creator.get_polytope()
+        self._currWythoff, self._noSnub = creator.get_wythoff()
+        self.reset()    # Treat it as a new polytope
+        self.render()
+
+    def set_view(self, viewAxis):
+        """
+        Change the current viewing axis and re-render.
+        viewAxis: the viewing axis in spherical coordinates (list, len=3)
+        """
+        self._viewAxis = satisfy_axis_restrictions(viewAxis)
+        try:
+            self.parent.vtheta.set('{0:.2f}'.format(self._viewAxis[0]))
+            self.parent.vphi.set('{0:.2f}'.format(self._viewAxis[1]))
+            self.parent.vomega.set('{0:.2f}'.format(self._viewAxis[2]))
+        except:
+            pass    # Camera position scales not loaded yet, fix this soon!
+        self.parent.set_status('view')
+        self.render()
+
+    def rotate(self, direction, rotAngle=ROTANGLE):
+        """
+        Rotate polytope on button press and re-render.
+        direction: left is 0, right is 1 (int)
+        rotAngle: number of radians to rotate (float), default ROTANGLE
+        """
+        if direction == 0:
+            self._currPolytope.rotate(rotAngle)
+            self._sphere.rotate(rotAngle)
+            self._axes.rotate(rotAngle)
+        elif direction == 1:    # Opposite direction is backwards rotation
+            self._currPolytope.rotate(-rotAngle)
+            self._sphere.rotate(-rotAngle)
+            self._axes.rotate(-rotAngle)
+        self.render()
+
+    def get_data(self, event):
+        """
+        Return data about the current polytope.
+        event: the type of data to return (str)
+               'view', 'lcol', 'rot', 'faces', 'star'
+        return: some data to put on the status bar (str)
+        """
+        if event == 'view':
+            return ', '.join(['{0:.2f}'.format(self._viewAxis[i])
+                              for i in range(3)])
+        if event == 'lcol':
+            return ', '.join([str(self._lightColour[i]) for i in range(3)])
+        if event == 'rot':
+            u = ', '.join(['{0:.2f}'.format(self.rotAxis[0][i])
+                           for i in range(4)])
+            v = ', '.join(['{0:.2f}'.format(self.rotAxis[1][i])
+                           for i in range(4)])
+            return u + ' and ' + v
+        if event == 'faces':
+            return self._currPolytope.get_face_sides()
+        if event == 'star':
+            return self._currPolytope.star
+
+    def take_input(self, event):
+        """
+        Take text input from input box.
+        entry: the input (str), assigned in the function, not a parameter
+               general: '', 'clear', 'reset', 'quit', 'exit', 'close'
+               zoom/dist/view: 'z0', 'd0', 'v0,0', 'v0,0,0'
+               light: 'la0,0', 'la0,0,0', 'lc1,1,1', 'li0'
+               rotaxis: 'r0,0,0', 'r0,0,0,0/0,0,0,0'
+        """
+        hasError = 0
+        entry = self.parent.inputText.get()
+
+        try:    # If anything fails, catch the error and set hasError to 1
+            if entry == ('' or 'clear' or 'reset'):         # Clear canvas
+                self.parent.set_status('clear')
+                return Polytope([])
+            elif entry == ('quit' or 'exit' or 'close'):    # Close program
+                self.parent.close()
+
+            elif entry.startswith('z'):                     # Set zoom
+                zoom = int(entry[1:])
+                if zoom < 1:                                # Must be positive
+                    hasError = 1
+                else:
+                    self.parent.change('z', zoom)
+            elif entry.startswith('d'):                     # Set distance
+                distance = int(entry[1:])
+                if distance < 1:
+                    hasError = 1
+                else:
+                    self.parent.change('d', distance)
+            elif entry.startswith('v'):                     # Set viewing axis
+                viewAxis = [float(num) for num in entry[1:].split(',')]
+                if len(viewAxis) < 3:   # Add omega if axis specified in 3D
+                    viewAxis.append(pi/2)
+                if len(viewAxis) != 3:  # After adding omega, length must be 3
+                    hasError = 1
+                else:
+                    self.set_view(viewAxis)
+
+            elif entry.startswith('li'):                # Set light intensity
+                lint = float(entry[2:])
+                if lint < 0 or lint > 2:
+                    hasError = 1
+                else:
+                    self.parent.change('li', lint)
+            elif entry.startswith('la'):                # Set light axis
+                laxis = [float(num) for num in entry[2:].split(',')]
+                if len(laxis) < 3:
+                    laxis.append(pi/2)
+                if len(laxis) != 3:
+                    hasError = 1
+                else:
+                    self.change('la', laxis)
+            elif entry.startswith('lc'):                # Set light colour
+                lightColour = [int(num) for num in entry[2:].split(',')]
+                if len(lightColour) != 3:
+                    hasError = 1
+                else:
+                    self.set_light(lightColour)
+
+            elif entry.startswith('r'):                 # Set rotation axis
+                rotAxis = entry[1:].split('/')
+                if len(rotAxis) == 2:       # 3D rotation plane, two vectors
+                    u = list(map(float, rotAxis[0].split(',')))
+                    v = list(map(float, rotAxis[1].split(',')))
+                    if (len(u) != 4 or len(v) != 4):
+                        hasError = 1
+                    else:
+                        self.set_rotax((u, v))
+                elif len(rotAxis) == 1:     # 2D rotation axis, one vector
+                    u = list(map(float, rotAxis[0].split(',')))
+                    if len(u) == 3:
+                        u.append(0)         # Cartesian coordinates, add 0
+                    if len(u) != 4:
+                        hasError = 1
+                    else:
+                        self.set_rotax(u, [0,0,0,1])    # Normal to w-axis
+                else:
+                    hasError = 1
+
+            else:
+                creator = Creator(entry)
+                polytope = creator.get_polytope()
+                if not polytope:
+                    hasError = 1
+                else:
+                    self._currPolytope = polytope
+                    if creator.get_wythoff():
+                        self._currWythoff,self._noSnub = creator.get_wythoff()
+                    self.reset()    # Create new polytope with input and reset
+        except:
+            hasError = 1
+
+        if hasError == 1:
+            self.parent.set_status('badinput')
+        self.parent.inputText.set('')   # Clear the input box
+
+    def _view(self, points):
         # Project 4D points on the plane normal to the viewing axis.
         # points: a list of points in 4D (list)
         #         all elements are in spherical coordinates (list, len=4)
@@ -1632,10 +1615,7 @@ class Canvas(tk.Canvas):
         return result
 
     def render(self):
-
-        """
-        Clear the canvas, center the frame, and display the objects.
-        """
+        """Clear the canvas, center the frame, and display the objects."""
 
         self.delete(tk.ALL)         # Clear the canvas
         w = self.winfo_width()//2   # Center the frame
@@ -1654,7 +1634,7 @@ class Canvas(tk.Canvas):
                                  fill=COLOURS[1][3], width=3)
 
         # Draw the coordinate axes
-        if w != 0 and h != 0 and self.parent.axes.get() == True: 
+        if w != 0 and h != 0 and self.parent.axes.get() == True:
             # Half-length of the axis, hard-coded, ZeroDivisionError somewhere
             l = 0.3 * RADIUS * self.parent.dist.get() / self.parent.zoom.get()
             axes = [normalize(axis, [l]) for axis in self._axes.get_points()]
@@ -1664,8 +1644,8 @@ class Canvas(tk.Canvas):
                 self.create_line(points[edge[0]], points[edge[1]],
                                  fill=COLOURS[3][i+1], width=5)
 
-        if not self._hasPolytope:
-            return      # Do nothing if there's nothing to do
+        if not self._currPolytope.get_points():
+            return      # Do nothing if the polytope is empty
 
         # Draw the actual polytope, since we know it exists
         self.parent.set_status('faces') # Show what faces it has
@@ -1707,7 +1687,7 @@ class Canvas(tk.Canvas):
 
             # Otherwise, sort faces by distance to the camera and draw them
             for face in faces:
-                distances[face] = distance(centres[face], camera)
+                distances[face] = distance2(centres[face], camera)
             order = sorted(distances, key=distances.get, reverse=True)
             for face in order:              # Colour the faces
                 hexcol = COLOURS[2][sideTypes[face]]
@@ -1734,7 +1714,7 @@ class Canvas(tk.Canvas):
             # Create list of doubles of edge distance and edge number
             distances = []
             for i in range(len(edges)):
-                distances.append((math.sqrt(distance(centres[i], camera)), i))
+                distances.append((math.sqrt(distance2(centres[i],camera)), i))
             order = sorted(distances, reverse=True)
             closest = self.parent.dist.get() - RADIUS
             for d,e in order:
@@ -1747,8 +1727,7 @@ class Canvas(tk.Canvas):
                                  fill=rgb, width=width)
             return
 
-
-    def _reset(self):
+    def reset(self):
         # Clear the canvas and reset all variables to default state.
         self.delete(tk.ALL)
         self._sphere = Sphere(SPHERENUM, RADIUS)
@@ -1787,7 +1766,7 @@ class Object():
     _axis_i             A basis vector of the rotation axis-plane (list)
     _axis_j             A basis vector, both in Cartesian coordinates (list)
     """
-    
+
     def __init__(self, points, edges):
         """
         Construct Object class.
@@ -1916,8 +1895,7 @@ class Polytope(Object):
         """
         Construct Polytope class.
         data: the initialization data for the polytope (list)
-              if no polytopes are to be created, data = []
-              otherwise, data = [points, edges, pointColours]
+              each element is a list, data = [points, edges, pointColours]
         """
         if data:
             super().__init__(data[0], data[1])
@@ -1935,19 +1913,11 @@ class Polytope(Object):
                 self._faceSides = {i:0 for i in range(3,21)}
             else:
                 self._remove_faces()
-        else:   # Initialize everything as empty lists if data is empty list
-            self.star = False
-            self._pointColours = []
-            self._points = []
-            self._edges = []
-            self._faces = []
-            self._faceSides = []
-            self._faceTypes = []
-            self._edgeCentres = []
-            self._faceCentres = []
+        else:
+            super().__init__([], [])    # Empty polytope, only rotates
+            self.star = 0
 
     def _set_faces(self):
-
         # Create a dictionary of faces, a dictionary of face sides,
         # and a dictionary of faces by side, using only a list of edges.
 
@@ -1983,7 +1953,6 @@ class Polytope(Object):
             i += 1
 
     def _bfs(self, end, start, length):
-
         # Breadth-first search to find the only path between start and end.
         # end: the ending vertex (int)
         # start: the starting vertex (int)
@@ -2051,9 +2020,11 @@ class Polytope(Object):
             normal = normals.pop()
             pathEnd = path[-3:] # Two consecutive edges belong to unique face
             two = tuple(sorted([pathEnd, pathEnd[::-1]])[0])
+
+            # First compare new edge to previous edges for coplanarity
             if two not in self._visited and two[0] != two[2]:
-                a = self._points[pathEnd[0]]      # Compare new edge to
-                b = self._points[pathEnd[1]]      # past edges for coplanarity
+                a = self._points[pathEnd[0]]
+                b = self._points[pathEnd[1]]
                 c = self._points[pathEnd[2]]
                 u = [b[i]-a[i] for i in range(3)]
                 v = [c[i]-b[i] for i in range(3)]
@@ -2062,21 +2033,29 @@ class Polytope(Object):
                 for i in range(3):
                     if (new[i] - normal[i]) > EPSILON:
                         coplanar = False
+
+                # Only continue if new edge is coplanar
                 if coplanar and depth == length:
+                    # Side number reached, try to find the end somewhere
                     for neighbour in self._graph[vertex]:
                         if neighbour == end:
                             path.append(end)
                             sides = []
                             length = len(path)
                             for i in range(length):
+                                # Find all sequences of two adjacent sides
                                 three = [path[(i+j)%length] for j in range(3)]
+                                # Find the lexicographically smallest order
                                 two = tuple(sorted([three, three[::-1]])[0])
                                 sides.append(two)
+                                # Don't add if those two adjacent sides are in
                                 if two in self._visited:
                                     break
-                            else:   # Only if all sides are unvisited
+                            else:
                                 self._visited.update(sides)
-                                faces.append(tuple(path))   # Immutable stable
+                                faces.append(tuple(path))
+
+                # Side number not reached, continue the breadth-first search
                 elif coplanar:
                     frontier = [neighbour for neighbour
                                 in self._graph[vertex]] + frontier
@@ -2084,8 +2063,11 @@ class Polytope(Object):
                              in self._graph[vertex]] + paths
                     normals = [normal for neighbour
                                in self._graph[vertex]] + normals
+
+            # Decrease the number of vertices left in the queue
             depthTime -= 1
             if depthTime == 0:
+                # No vertices left in current depth, increase depth by one
                 if len(frontier) == 0:
                     break
                 else:
@@ -2123,7 +2105,6 @@ class Polytope(Object):
         # ab, bc: the line segments (lists)
         #         all elements are in Cartesian coordinates (list, len=4)
         # return: orientation (int), where 0 is parallel, 1 and -1 are curved
-        """Return the relative orientation of three points a, b, and c."""
         orientation = sum([cross3D(ab,bc)[i] for i in range(3)])
         if orientation < EPSILON:
             return 0
@@ -2202,10 +2183,10 @@ class Polytope(Object):
             depth = 5000    # Larger depth to keep outside faces, hard-coded
         else:
             depth = 3000    # Smaller depth to remove inside faces
-        surface = distance(self._faceCentres[0]) - depth    # Minimum distance
+        surface = distance2(self._faceCentres[0]) - depth   # Minimum distance
         iterDict = dict(self._faces)    # Keeps dictionary from changing size
         for i in iterDict:
-            if distance(self._faceCentres[i]) < surface:
+            if distance2(self._faceCentres[i]) < surface:
                 self._faceSides[len(self._faces[i])] -= 1
                 self._faces.pop(i)
                 self._faceCentres.pop(i)
@@ -2263,7 +2244,6 @@ class Polytope(Object):
         return self._faceCentres
 
     def get_shades(self, laxis):
-
         """
         Calculate the amount of shading needed according to the angle.
         laxis: the light position in spherical coordinates (list, len=4)
@@ -2281,7 +2261,7 @@ class Polytope(Object):
             u = [a[i] - b[i] for i in range(3)]
             v = [b[i] - c[i] for i in range(3)]
             normal = cross3D(u, v)  # Can't use self._centres[0] = [0,0,0,0]
-            denom = math.sqrt(abs(distance(normal) * distance(light)))
+            denom = math.sqrt(abs(distance2(normal) * distance2(light)))
             shade = sum([light[i]*normal[i]/denom for i in range(3)])
             return shade
 
@@ -2291,7 +2271,7 @@ class Polytope(Object):
             for f in self._faces:
                 light = [laxis[i]-self._faceCentres[f][i] for i in range(3)]
                 normal = self._faceCentres[f]    # Normal passes origin
-                dnm = math.sqrt(abs(distance(normal) * distance(light)))
+                dnm = math.sqrt(abs(distance2(normal) * distance2(light)))
                 shades.append(sum([light[i]*normal[i]/dnm for i in range(3)]))
             return shades
 
@@ -2381,9 +2361,7 @@ class Axes(Object):
     """
 
     def __init__(self):
-        """
-        Construct Axes class.
-        """
+        """Construct Axes class."""
         points = [(1,0,0,0), (-1,0,0,0), (0,1,0,0), (0,-1,0,0),
                   (0,0,1,0), (0,0,-1,0), (0,0,0,1), (0,0,0,-1)]
         edges = [(0,1), (2,3), (4,5), (6,7)]
