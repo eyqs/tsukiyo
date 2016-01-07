@@ -1,19 +1,19 @@
 """
-Polytope Player v0.87
+Polytope Player v0.88
 
 This program lets you play with polytopes!
-The Canvas class is now split into two classes:
-Canvas to rotate and display the polytope, and
-Creator to actually translate and create it.
-The transition went generally alright, though
-I ought to really create some unit tests...
+The canvas now retains its zoom, dist, and rotaxis between objects,
+instead of resetting everything every time the object changes.
+Polytopes don't keep their rotation, but the Sphere/Axes do,
+which can be considered more of a feature than a bug.
+Also, clearing and Wythoff bars now actually work.
 """
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
 import random
 
-TITLE = 'Polytope Player v0.87'
+TITLE = 'Polytope Player v0.88'
 DESCRIPTION = '\nThis script lets you play with polytopes.'
 WIDTH = 600
 HEIGHT = 550
@@ -541,7 +541,7 @@ class Main(ttk.Frame):
                'clear', 'badinput', 'view', 'rot', 'lcol', 'faces'
         """
         if event == 'clear':
-            self.statusText.set('')
+            self.statusText.set('Canvas cleared.')
         elif event == 'badinput':
             self.statusText.set('Bad input!')   # Keep status on for FADEDELAY
             self.statusLabel.after(FADEDELAY, self.set_status, 'clear')
@@ -633,6 +633,8 @@ class Main(ttk.Frame):
                 # Follows a x^(-3/2) curve; changes more as distance increases
                 # Min is ZOOM*RADIUS*RETINA/1000, max is ZOOM*RADIUS*RETINA
                 self.dist.set(int(ZOOM*RADIUS*RETINA/self.unitDist**(3/2)))
+                self.sphere.set(False)
+                self.axes.set(False)
                 self.change('3')    # Set 3D mode to True
             except:
                 return
@@ -1028,7 +1030,8 @@ class Creator():
                 for j in range(i+1, len(points)):
                     if abs(distance2(points[i], points[j]) - side) < 2:
                         edges.append((i,j))
-        return points, edges, colours, symbol, noSnub
+        # Use sorted symbol for consistency with set_bar
+        return points, edges, colours, sorted(symbol), noSnub
 
     def _wythoff_snub(self, p, q, s):
         # Find the generating point of a snub Wythoff polyhedron.
@@ -1298,8 +1301,9 @@ class Canvas(tk.Canvas):
         tk.Canvas.__init__(self, parent, relief=tk.GROOVE,
                            background=COLOURS[4][1],
                            borderwidth=5, width=300, height=200)
-        self._currPolytope = Polytope([])   # Empty polytope to rotate
-        self._currWythoff = ['2','2','2']
+        self._currWythoff = ['2','3','3']
+        self._sphere = Sphere(SPHERENUM, RADIUS)
+        self._axes = Axes()
         self._noSnub = 0
 
     def set_light(self, lcol):
@@ -1395,7 +1399,7 @@ class Canvas(tk.Canvas):
         creator = Creator(symbol)
         self._currPolytope = creator.get_polytope()
         self._currWythoff, self._noSnub = creator.get_wythoff()
-        self.reset()    # Treat it as a new polytope
+        self.set_rotax(self.rotAxis)
         self.render()
 
     def set_view(self, viewAxis):
@@ -1420,11 +1424,13 @@ class Canvas(tk.Canvas):
         rotAngle: number of radians to rotate (float), default ROTANGLE
         """
         if direction == 0:
-            self._currPolytope.rotate(rotAngle)
+            if self._currPolytope.get_points():
+                self._currPolytope.rotate(rotAngle)
             self._sphere.rotate(rotAngle)
             self._axes.rotate(rotAngle)
         elif direction == 1:    # Opposite direction is backwards rotation
-            self._currPolytope.rotate(-rotAngle)
+            if self._currPolytope.get_points():
+                self._currPolytope.rotate(-rotAngle)
             self._sphere.rotate(-rotAngle)
             self._axes.rotate(-rotAngle)
         self.render()
@@ -1465,10 +1471,10 @@ class Canvas(tk.Canvas):
         entry = self.parent.inputText.get()
 
         try:    # If anything fails, catch the error and set hasError to 1
-            if entry == ('' or 'clear' or 'reset'):         # Clear canvas
+            if entry in ['', 'clear', 'reset']:             # Clear canvas
                 self.parent.set_status('clear')
-                return Polytope([])
-            elif entry == ('quit' or 'exit' or 'close'):    # Close program
+                self.reset()
+            elif entry in ['quit', 'exit', 'close']:        # Close program
                 self.parent.close()
 
             elif entry.startswith('z'):                     # Set zoom
@@ -1542,7 +1548,10 @@ class Canvas(tk.Canvas):
                     self._currPolytope = polytope
                     if creator.get_wythoff():
                         self._currWythoff,self._noSnub = creator.get_wythoff()
-                    self.reset()    # Create new polytope with input and reset
+                        if self._noSnub == 1:
+                            self.parent.change('b')
+                    self.set_rotax(self.rotAxis)
+                    self.render()   # Create new polytope with input
         except:
             hasError = 1
 
@@ -1730,9 +1739,7 @@ class Canvas(tk.Canvas):
     def reset(self):
         # Clear the canvas and reset all variables to default state.
         self.delete(tk.ALL)
-        self._sphere = Sphere(SPHERENUM, RADIUS)
-        self._axes = Axes()
-        # Default settings
+        self._currPolytope = Polytope([])   # Empty polytope to rotate
         self.set_rotax('xw')
         self.set_view([0, 0, pi/2])
         self.set_light([255,255,255])
@@ -1741,6 +1748,8 @@ class Canvas(tk.Canvas):
             self.parent.change('w')
         if self._noSnub == 1:
             self.parent.change('b')
+        self.parent.set_status('clear')
+        self.render()
 
 
 
