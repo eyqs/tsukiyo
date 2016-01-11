@@ -1,19 +1,19 @@
 """
-Polytope Player v0.88
+Polytope Player v0.89
 
 This program lets you play with polytopes!
-The canvas now retains its zoom, dist, and rotaxis between objects,
-instead of resetting everything every time the object changes.
-Polytopes don't keep their rotation, but the Sphere/Axes do,
-which can be considered more of a feature than a bug.
-Also, clearing and Wythoff bars now actually work.
+The main class now handles the setter functions in canvas,
+since they were already changing self.parent.foo anyway.
+The omega sliders are set to pi/2 and disabled in only3D.
+Also, some minor fixes for set_bar and changing rotAxis.
+set_colours isn't doing anything so it's gone... for now.
 """
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
 import random
 
-TITLE = 'Polytope Player v0.88'
+TITLE = 'Polytope Player v0.89'
 DESCRIPTION = '\nThis script lets you play with polytopes.'
 WIDTH = 600
 HEIGHT = 550
@@ -167,6 +167,10 @@ class Main(ttk.Frame):
     Public methods:
     set_status          Display status changes on the status bar.
     change              Change GUI values and re-render.
+    set_view            Change the current viewing axis and re-render.
+    set_light           Change properties of the lighting and re-render.
+    set_rotax           Change the rotation axis-plane and re-render.
+    take_input          Take text input from input box.
     close               Close the program.
 
     Public variables:
@@ -178,9 +182,12 @@ class Main(ttk.Frame):
     rotBtns             To allow the buttons to be disabled (list)
     barBtns                 all elements are ttk.Buttons
     viewBtns
+    viewWidgets         To allow the scale to be disabled (list of ttk.Scales)
     lint ltheta lphi    To keep track of light properties (tk.DoubleVars)
     lred lgreen lblue   To keep track of light colours (tk.IntVars)
     vtheta vphi vomega  To keep track of camera location (tk.DoubleVars)
+    rux ruy ruz ruw     To keep track of rotation axis-plane location
+    rvx rvy rvz rvw         (tk.DoubleVars)
     sphere              To keep track of sphere check (tk.BooleanVar)
     axes                To keep track of axes check (tk.BooleanVar)
     wire                To keep track of wire check (tk.BooleanVar)
@@ -342,8 +349,8 @@ class Main(ttk.Frame):
         for i,t in enumerate(self.rotBtns):
             # Use default variable to ensure lambdas have different arguments
             b = ttk.Button(guiRight, text=t, width=5,
-                           command=lambda t=t: self.canvas.set_rotax(t))
-            b.bind('<Key-Return>', lambda event,t=t: self.canvas.set_rotax(t))
+                           command=lambda t=t: self.set_rotax(t))
+            b.bind('<Key-Return>', lambda event,t=t: self.set_rotax(t))
             b.grid(row=int(2+i/3), column=i%3)
             self.rotBtns[i] = b     # Replace text with actual buttons
 
@@ -404,18 +411,29 @@ class Main(ttk.Frame):
         self.vtheta = tk.DoubleVar()
         self.vphi = tk.DoubleVar()
         self.vomega = tk.DoubleVar()
-        viewWidgets = [('θ', self.vtheta, 6.28), ('φ', self.vphi, 3.14),
+        self.viewWidgets = [('θ', self.vtheta, 6.28), ('φ', self.vphi, 3.14),
                        ('ω', self.vomega, 3.14)]
-        for i,(t,v,o) in enumerate(viewWidgets):
+        for i,(t,v,o) in enumerate(self.viewWidgets):
             l = ttk.Label(guiRight, text=t)
             l.grid(row=18, column=i)
             d = ttk.Entry(guiRight, textvariable=v, width=4, validate='key',
-                          validatecommand=(self.register(self._valid), '%P',o))
+                          validatecommand=(self.register(self._valid),'%P',o))
             d.bind('<Key-Return>', lambda event: self.change('s'))
             d.grid(row=19, column=i)
             s = ttk.Scale(guiRight, orient=tk.VERTICAL, from_=0, to=o,
                           variable=v, command=lambda event: self.change('s'))
             s.grid(row=20, column=i)
+            self.viewWidgets[i] = s
+
+        # Keep rotation axis-plane variables, but don't display them
+        self.rux = tk.DoubleVar()
+        self.ruy = tk.DoubleVar()
+        self.ruz = tk.DoubleVar()
+        self.ruw = tk.DoubleVar()
+        self.rvx = tk.DoubleVar()
+        self.rvy = tk.DoubleVar()
+        self.rvz = tk.DoubleVar()
+        self.rvw = tk.DoubleVar()
 
         # Grid guiBottom widgets: 5 rows, 7 columns
 
@@ -426,7 +444,7 @@ class Main(ttk.Frame):
         self.statusLabel.grid(row=0, column=0, columnspan=7, sticky=tk.W)
         self.inputText = tk.StringVar()
         inputBox = ttk.Entry(guiBottom, textvariable=self.inputText)
-        inputBox.bind('<Key-Return>', self.canvas.take_input)
+        inputBox.bind('<Key-Return>', self.take_input)
         inputBox.grid(row=1, column=0, columnspan=7, sticky=tk.E+tk.W)
         inputBox.focus()    # Put initial keyboard focus on inputBox
 
@@ -459,8 +477,8 @@ class Main(ttk.Frame):
                          ('z', [0, 0, pi/2]), ('w', [0, 0, 0])]
         for i,(t,c) in enumerate(self.viewBtns):
             b = ttk.Button(guiBottom, text=t, width=2,
-                           command=lambda c=c: self.canvas.set_view(c))
-            b.bind('<Key-Return>', lambda event,c=c: self.canvas.set_view(c))
+                           command=lambda c=c: self.set_view(c))
+            b.bind('<Key-Return>', lambda event,c=c: self.set_view(c))
             b.grid(row=2, column=3+i)
             self.viewBtns[i] = b
 
@@ -490,8 +508,8 @@ class Main(ttk.Frame):
         distDisplay = ttk.Label(guiBottom, textvariable=self.dist)
         distDisplay.grid(row=4, column=4, columnspan=3, sticky=tk.E)
 
-        self.change('r')    # Set initial zoom and distance in change
-        self.canvas.reset() # Set initial settings in canvas
+        self.change('r')    # Initialize all properties with default values
+        self.set_status('clear')
 
     def _valid(self, entry, to):
         # Ensure that scale entry inputs are valid.
@@ -540,21 +558,10 @@ class Main(ttk.Frame):
         event: the type of status change (str)
                'clear', 'badinput', 'view', 'rot', 'lcol', 'faces'
         """
-        if event == 'clear':
-            self.statusText.set('Canvas cleared.')
-        elif event == 'badinput':
-            self.statusText.set('Bad input!')   # Keep status on for FADEDELAY
-            self.statusLabel.after(FADEDELAY, self.set_status, 'clear')
-        elif event == 'view':
-            self.statusText.set('New view angle: ' +
-                                self.canvas.get_data('view'))
-        elif event == 'rot':
-            self.statusText.set('New rotation axes: ' +
-                                self.canvas.get_data('rot'))
-        elif event == 'lcol':
-            self.statusText.set('New light colour: ' +
-                                self.canvas.get_data('lcol'))
-        elif event == 'faces':      # Display number and types of faces
+        if event == '':
+            self.statusText.set('')
+
+        elif event == 'faces':  # Keep displaying number and types of faces
             faceText = ''
             faces = self.canvas.get_data('faces')
             for i in range(3,21):
@@ -563,6 +570,29 @@ class Main(ttk.Frame):
                 if faces[i] > 1:
                     faceText += str(faces[i]) + ' ' + POLYGONS[i] + 's '
             self.statusText.set(faceText)
+
+        else:
+            if event == 'clear':
+                self.statusText.set('Canvas cleared.')
+            elif event == 'badinput':
+                self.statusText.set('Bad input!')   # Keep status on for FADEDELAY
+
+            elif event == 'view':
+                self.statusText.set('New view angle: ' + ', '.join(
+                                [str(self.vtheta.get()), str(self.vphi.get()),
+                                 str(self.vomega.get())]))
+            elif event == 'lcol':
+                self.statusText.set('New light colour: ' + ', '.join(
+                                [str(self.lred.get()), str(self.lgreen.get()),
+                                 str(self.lblue.get())]))
+            elif event == 'rot':
+                self.statusText.set('New rotation axes: ' + ', '.join(
+                                [str(self.rux.get()), str(self.ruy.get()),
+                                 str(self.ruz.get()), str(self.ruw.get())])
+                                + ' and ' + ', '.join(
+                                [str(self.rvx.get()), str(self.rvy.get()),
+                                 str(self.rvz.get()), str(self.rvw.get())]))
+            self.statusLabel.after(FADEDELAY, self.set_status, '')
 
     def change(self, change=None, value=0):
         """
@@ -582,13 +612,19 @@ class Main(ttk.Frame):
         elif change == '3':     # Disable 4D features if only 3D mode is on
             if self.only3D.get() == True:   # Disable 4D view button
                 self.viewBtns[3].config(state=tk.DISABLED)
+                self.viewWidgets[2].state(['disabled'])
                 for i in range(3,6):        # Disable 4D rotation buttons
                     self.rotBtns[i].config(state=tk.DISABLED)
-                self.canvas.set_rotax('xw') # Reset rotation and view axis
-                self.canvas.set_view([0, 0, pi/2])
+                self.vomega.set(1.57)   # Reset omega component of view axis
+                self.ruw.set(0)         # Reset w-component of rotation axis
+                self.rvx.set(0)         # Set the other rotation axis as the
+                self.rvy.set(0)         # w-axis, so all rotations are in 3D
+                self.rvz.set(0)
+                self.rvw.set(1)
                 self.wireCheck.config(state=tk.NORMAL)
             else:                           # Enable everything above
                 self.viewBtns[3].config(state=tk.NORMAL)
+                self.viewWidgets[2].state(['!disabled'])
                 for i in range(3,6):
                     self.rotBtns[i].config(state=tk.NORMAL)
                 self.wire.set(True)         # Force wireframe mode to be true
@@ -610,10 +646,10 @@ class Main(ttk.Frame):
                     s.set(0)
                 s.set('{0:.0f}'.format(s.get()))
             # Update the current light colour and camera position
-            self.canvas.set_light([s.get() for s in
-                                   (self.lred, self.lgreen, self.lblue)])
-            self.canvas.set_view([s.get() for s in
+            self.set_view([s.get() for s in
                                   (self.vtheta, self.vphi, self.vomega)])
+            self.set_light([s.get() for s in
+                                   (self.lred, self.lgreen, self.lblue)])
 
         elif change == 'li':
             self.lint.set('{0:.2f}'.format(value))
@@ -624,6 +660,10 @@ class Main(ttk.Frame):
 
         elif change == 'r':     # Reset to initial states
             try:                # Canvas initializes before zoom
+                self.canvas.make_polytope(None)
+                self.set_view([0, 0, pi/2])
+                self.set_light([255,255,255])
+                self.set_rotax('xw')
                 self.lint.set('{0:.2f}'.format(1))
                 self.ltheta.set('{0:.2f}'.format(0))
                 self.lphi.set('{0:.2f}'.format(0))
@@ -670,10 +710,155 @@ class Main(ttk.Frame):
                 self.unitDist = 1
             self.dist.set(int(ZOOM*RADIUS*RETINA/self.unitDist**(3/2)))
             if (self.unitDist**(3/2) < ZOOM*RETINA      # Camera is far enough
-                and self.canvas.get_data('star') == 0):
+                and self.canvas.get_data('star') == False):
                 self.wireCheck.config(state=tk.NORMAL)
 
         self.canvas.render()
+
+    def set_view(self, viewAxis):
+        """
+        Change the current viewing axis and re-render.
+        viewAxis: the viewing axis in spherical coordinates (list, len=3)
+        """
+        viewAxis = satisfy_axis_restrictions(viewAxis)
+        self.vtheta.set('{0:.2f}'.format(viewAxis[0]))
+        self.vphi.set('{0:.2f}'.format(viewAxis[1]))
+        self.vomega.set('{0:.2f}'.format(viewAxis[2]))
+        self.set_status('view')
+        self.canvas.render()
+
+    def set_light(self, lcol):
+        """
+        Change properties of the lighting and re-render.
+        lcol: the light colour in RGB integers between 0 and 255 (list, len=3)
+        """
+        try:
+            self.lred.set('{0:.0f}'.format(lcol[0]))
+            self.lgreen.set('{0:.0f}'.format(lcol[1]))
+            self.lblue.set('{0:.0f}'.format(lcol[2]))
+        except:
+            pass    # Light colour scales not loaded yet, fix this soon!
+        self.set_status('lcol')
+        self.canvas.render()
+
+    def set_rotax(self, rotAxis):
+        """
+        Change the current rotation axis-plane and re-render.
+        rotAxis: the rotation axis-plane as a list of two axes (list, len=2)
+                 all elements are in Cartesian coordinates (list, len=4)
+        """
+        # Button presses have specified rotAxis, manual inputs go through
+        if rotAxis == 'xw':
+            rotAxis = [(1,0,0,0),(0,0,0,1)]
+        elif rotAxis == 'yw':
+            rotAxis = [(0,1,0,0),(0,0,0,1)]
+        elif rotAxis == 'zw':
+            rotAxis = [(0,0,1,0),(0,0,0,1)]
+        elif rotAxis == 'xy':
+            rotAxis = [(1,0,0,0),(0,1,0,0)]
+        elif rotAxis == 'yz':
+            rotAxis = [(0,1,0,0),(0,0,1,0)]
+        elif rotAxis == 'xz':
+            rotAxis = [(1,0,0,0),(0,0,1,0)]
+        u = [self.rux, self.ruy, self.ruz, self.ruw]
+        v = [self.rvx, self.rvy, self.rvz, self.rvw]
+        for i in range(4):
+            u[i].set('{0:.2f}'.format(rotAxis[0][i]))
+            v[i].set('{0:.2f}'.format(rotAxis[1][i]))
+        self.canvas.set_rotaxes(rotAxis)
+        self.set_status('rot')
+        self.canvas.render()
+
+    def take_input(self, event):
+        """
+        Take text input from input box.
+        entry: the input (str), assigned in the function, not a parameter
+               general: '', 'clear', 'reset', 'quit', 'exit', 'close'
+               zoom/dist/view: 'z0', 'd0', 'v0,0', 'v0,0,0'
+               light: 'la0,0', 'la0,0,0', 'lc1,1,1', 'li0'
+               rotaxis: 'r0,0,0', 'r0,0,0,0/0,0,0,0'
+        """
+        hasError = False
+        entry = self.inputText.get()
+
+        try:    # If anything fails, catch the error and set hasError to 1
+            if entry in ['', 'clear', 'reset']:         # Clear canvas
+                self.change('r')
+                self.set_status('clear')
+            elif entry in ['quit', 'exit', 'close']:    # Close program
+                self.close()
+
+            elif entry.startswith('z'):                 # Set zoom
+                zoom = int(entry[1:])
+                if zoom < 1:                            # Must be positive
+                    hasError = True
+                else:
+                    self.change('z', zoom)
+            elif entry.startswith('d'):                 # Set distance
+                distance = int(entry[1:])
+                if distance < 1:
+                    hasError = True
+                else:
+                    self.change('d', distance)
+            elif entry.startswith('v'):                 # Set viewing axis
+                viewAxis = [float(num) for num in entry[1:].split(',')]
+                if len(viewAxis) < 3:   # Add omega if axis specified in 3D
+                    viewAxis.append(pi/2)
+                if len(viewAxis) != 3:  # After adding omega, length must be 3
+                    hasError = True
+                else:
+                    self.set_view(viewAxis)
+
+            elif entry.startswith('li'):                # Set light intensity
+                lint = float(entry[2:])
+                if lint < 0 or lint > 2:
+                    hasError = True
+                else:
+                    self.change('li', lint)
+            elif entry.startswith('la'):                # Set light axis
+                laxis = [float(num) for num in entry[2:].split(',')]
+                if len(laxis) < 3:
+                    laxis.append(pi/2)
+                if len(laxis) != 3:
+                    hasError = True
+                else:
+                    self.change('la', laxis)
+            elif entry.startswith('lc'):                # Set light colour
+                lightColour = [int(num) for num in entry[2:].split(',')]
+                if len(lightColour) != 3:
+                    hasError = True
+                else:
+                    self.set_light(lightColour)
+
+            elif entry.startswith('r'):                 # Set rotation axis
+                rotAxis = entry[1:].split('/')
+                if len(rotAxis) == 2:       # 3D rotation plane, two vectors
+                    u = list(map(float, rotAxis[0].split(',')))
+                    v = list(map(float, rotAxis[1].split(',')))
+                    if (len(u) != 4 or len(v) != 4):
+                        hasError = True
+                    else:
+                        self.set_rotax((u, v))
+                elif len(rotAxis) == 1:     # 2D rotation axis, one vector
+                    u = list(map(float, rotAxis[0].split(',')))
+                    if len(u) == 3:
+                        u.append(0)         # Cartesian coordinates, add 0
+                    if len(u) != 4:
+                        hasError = True
+                    else:
+                        self.set_rotax((u, [0,0,0,1]))  # Normal to w-axis
+                else:
+                    hasError = True
+            else:
+                self.canvas.make_polytope(entry)
+                self.set_status('faces')
+
+        except:
+            hasError = True
+
+        if hasError == True:
+            self.set_status('badinput')
+        self.inputText.set('')   # Clear the input box
 
     def close(self):
         """Close the program."""
@@ -710,7 +895,7 @@ class Creator():
         """
         self._polytope = None
         self._currWythoff = None
-        self._noSnub = None
+        self._noSnub = False
         if entry.startswith('{') and entry.endswith('}'):
             try:
                 if ',' in entry:
@@ -900,7 +1085,7 @@ class Creator():
         pqs = []
         for i in range(3):
             if '/' in symbol[i]:    # Convert all fractions into decimals
-                numer, denom = map(int(symbol[i].split('/')))
+                numer, denom = map(int,symbol[i].split('/'))
                 pqs.append(numer/denom)
             else:
                 pqs.append(int(symbol[i]))
@@ -918,11 +1103,11 @@ class Creator():
 
         # Check if the snub version exists, and disable its button if not
         if sorted(symbol) in SNUBABLE:
-            noSnub = 0
+            noSnub = False
         else:
             if selection == 'b':
                 raise ValueError
-            noSnub = 1
+            noSnub = True
 
         # Find fundamental Schwarz triangle
         triangles = [[[0.0 if abs(x) < EPSILON else x for x in
@@ -1260,16 +1445,12 @@ class Canvas(tk.Canvas):
     Display class that manages object rotation and display.
 
     Public methods:
-    set_light           Change properties of the lighting and re-render.
-    set_colours         Change various colour settings and re-render.
-    set_rotax           Change the rotation axis-plane and re-render.
-    set_bar             Change the generating point and re-render.
-    set_view            Change the current viewing axis and re-render.
-    rotate              Rotate polytope on button press and re-render.
+    make_polytope       Make new polytope and re-render.
+    set_rotaxes         Change the rotation axis-plane of all objects.
+    set_bar             Change the generating point and make new polyhedron.
+    rotate              Rotate objects on button press and re-render.
     get_data            Return data about the current polytope.
-    take_input          Take text input from input box.
     render              Clear the canvas and display the objects.
-    reset               Clear the canvas and reset all variables.
 
     Public variables:
     parent              Parent of class (Main)
@@ -1284,12 +1465,6 @@ class Canvas(tk.Canvas):
     _axes               Instance of Axes class (Axes)
     _currWythoff        To keep track of the current Wythoff numbers (list)
     _noSnub             To keep track of if the snub does not exist (bool)
-    _lightColour        The current light colour (list)
-    _vertexColours      The colour of vertices in wire mode (list)
-    _edgeColours        The colour of edges in wire mode (list)
-    _baseColours        The colour of polygonal faces (dict)
-    _sphereColours      The colours of the sphere overlay (list)
-    _menuColours        The colours of menus and the GUI (list)
     """
 
     def __init__(self, parent):
@@ -1301,78 +1476,54 @@ class Canvas(tk.Canvas):
         tk.Canvas.__init__(self, parent, relief=tk.GROOVE,
                            background=COLOURS[4][1],
                            borderwidth=5, width=300, height=200)
-        self._currWythoff = ['2','3','3']
+        self._currPolytope = Polytope([])
         self._sphere = Sphere(SPHERENUM, RADIUS)
         self._axes = Axes()
-        self._noSnub = 0
+        self._currWythoff = ['2','3','3']
+        self._noSnub = False
 
-    def set_light(self, lcol):
+    def make_polytope(self, entry):
         """
-        Change properties of the lighting and re-render.
-        lcol: the light colour in RGB integers between 0 and 255 (list, len=3)
+        Create a new polytope object and re-render.
+        entry: the text input that represents the object (str)
         """
-        self._lightColour = lcol
-        try:
-            self.parent.lred.set('{0:.0f}'.format(self._lightColour[0]))
-            self.parent.lgreen.set('{0:.0f}'.format(self._lightColour[1]))
-            self.parent.lblue.set('{0:.0f}'.format(self._lightColour[2]))
-        except:
-            pass    # Light colour scales not loaded yet, fix this soon!
-        self.parent.set_status('lcol')
-        self.render()
-
-    def set_colours(self,vcol=None,ecol=None,bcol=None,scol=None,mcol=None):
-        """
-        Change various colour settings and re-render.
-
-        vcol: the colour of vertices in wireframe mode (list, len=3)
-        ecol: the colour of edges in wireframe mode (list, len=6)
-        bcol: the colour of different types of polygonal faces (dict, 3:22)
-        scol: the colours of the sphere overlay (list, len=4)
-        mcol: the colours of menus and the GUI (list, len=3)
-        All defaults are None, colours are in RGB integers between 0 and 255.
-        """
-        if vcol:
-            self._vertexColours = vcol
-        if ecol:
-            self._edgeColours = ecol
-        if bcol:
-            self._baseColours = bcol
-        if scol:
-            self._sphereColours = scol
-        if mcol:
-            self._menuColours = mcol
-        self.render()
-
-    def set_rotax(self, rotAxis):
-        """
-        Change the current rotation axis-plane and re-render.
-        rotAxis: the rotation axis-plane as a list of two axes (list, len=2)
-                 all elements are in spherical coordinates (list, len=4)
-        """
-        if rotAxis == 'xw':
-            self.rotAxis = [(1,0,0,0),(0,0,0,1)]
-        elif rotAxis == 'yw':
-            self.rotAxis = [(0,1,0,0),(0,0,0,1)]
-        elif rotAxis == 'zw':
-            self.rotAxis = [(0,0,1,0),(0,0,0,1)]
-        elif rotAxis == 'xy':
-            self.rotAxis = [(1,0,0,0),(0,1,0,0)]
-        elif rotAxis == 'yz':
-            self.rotAxis = [(0,1,0,0),(0,0,1,0)]
-        elif rotAxis == 'xz':
-            self.rotAxis = [(1,0,0,0),(0,0,1,0)]
+        if not entry:   # Make blank polytope`
+            self._currPolytope = Polytope([])
         else:
-            self.rotAxis = rotAxis  # Manual input, not button press
-        self._currPolytope.set_rotaxis(self.rotAxis)
-        self._sphere.set_rotaxis(self.rotAxis)
-        self._axes.set_rotaxis(self.rotAxis)
-        self.parent.set_status('rot')
-        self.render()
+            creator = Creator(entry)
+            polytope = creator.get_polytope()
+            if polytope:
+                self._currPolytope = polytope
+                if creator.get_wythoff():
+                    self._currWythoff, self._noSnub = creator.get_wythoff()
+                    if self._noSnub == True:
+                        self.parent.change('b')
+                    if self._currPolytope.star == True:
+                        self.parent.change('w')
+                self.set_rotaxes(None)
+                self.render()
+
+    def set_rotaxes(self, rotAxis):
+        """
+        Change the current rotation axis-plane of all objects.
+        rotAxis: the rotation axis-plane as a list of two axes (list, len=2)
+                 default is the previous one, when only _currPolytope changes
+                 all elements are in Cartesian coordinates (list, len=4)
+        """
+        if rotAxis:
+            self._currPolytope.set_rotaxis(rotAxis)
+            self._sphere.set_rotaxis(rotAxis)
+            self._axes.set_rotaxis(rotAxis)
+        else:
+            rotAxis = [(self.parent.rux.get(), self.parent.ruy.get(),
+                        self.parent.ruz.get(), self.parent.ruw.get()),
+                       (self.parent.rvx.get(), self.parent.rvy.get(),
+                        self.parent.rvz.get(), self.parent.rvw.get())]
+            self._currPolytope.set_rotaxis(rotAxis)
 
     def set_bar(self, bar):
         """
-        Change the Wythoff generating point and re-render.
+        Change the Wythoff generating point and make new uniform polyhedron.
         bar: the type of generating point (str)
         """
         p = str(self._currWythoff[0])
@@ -1396,30 +1547,12 @@ class Canvas(tk.Canvas):
             symbol = ' '.join(['(',q,s,'|',p,')'])
         elif bar == 'sp':
             symbol = ' '.join(['(',s,p,'|',q,')'])
-        creator = Creator(symbol)
-        self._currPolytope = creator.get_polytope()
-        self._currWythoff, self._noSnub = creator.get_wythoff()
-        self.set_rotax(self.rotAxis)
-        self.render()
-
-    def set_view(self, viewAxis):
-        """
-        Change the current viewing axis and re-render.
-        viewAxis: the viewing axis in spherical coordinates (list, len=3)
-        """
-        self._viewAxis = satisfy_axis_restrictions(viewAxis)
-        try:
-            self.parent.vtheta.set('{0:.2f}'.format(self._viewAxis[0]))
-            self.parent.vphi.set('{0:.2f}'.format(self._viewAxis[1]))
-            self.parent.vomega.set('{0:.2f}'.format(self._viewAxis[2]))
-        except:
-            pass    # Camera position scales not loaded yet, fix this soon!
-        self.parent.set_status('view')
-        self.render()
+        self.make_polytope(symbol)
+        self.parent.set_status('faces')
 
     def rotate(self, direction, rotAngle=ROTANGLE):
         """
-        Rotate polytope on button press and re-render.
+        Rotate objects on button press and re-render.
         direction: left is 0, right is 1 (int)
         rotAngle: number of radians to rotate (float), default ROTANGLE
         """
@@ -1439,139 +1572,27 @@ class Canvas(tk.Canvas):
         """
         Return data about the current polytope.
         event: the type of data to return (str)
-               'view', 'lcol', 'rot', 'faces', 'star'
         return: some data to put on the status bar (str)
         """
-        if event == 'view':
-            return ', '.join(['{0:.2f}'.format(self._viewAxis[i])
-                              for i in range(3)])
-        if event == 'lcol':
-            return ', '.join([str(self._lightColour[i]) for i in range(3)])
-        if event == 'rot':
-            u = ', '.join(['{0:.2f}'.format(self.rotAxis[0][i])
-                           for i in range(4)])
-            v = ', '.join(['{0:.2f}'.format(self.rotAxis[1][i])
-                           for i in range(4)])
-            return u + ' and ' + v
         if event == 'faces':
             return self._currPolytope.get_face_sides()
         if event == 'star':
             return self._currPolytope.star
 
-    def take_input(self, event):
-        """
-        Take text input from input box.
-        entry: the input (str), assigned in the function, not a parameter
-               general: '', 'clear', 'reset', 'quit', 'exit', 'close'
-               zoom/dist/view: 'z0', 'd0', 'v0,0', 'v0,0,0'
-               light: 'la0,0', 'la0,0,0', 'lc1,1,1', 'li0'
-               rotaxis: 'r0,0,0', 'r0,0,0,0/0,0,0,0'
-        """
-        hasError = 0
-        entry = self.parent.inputText.get()
-
-        try:    # If anything fails, catch the error and set hasError to 1
-            if entry in ['', 'clear', 'reset']:             # Clear canvas
-                self.parent.set_status('clear')
-                self.reset()
-            elif entry in ['quit', 'exit', 'close']:        # Close program
-                self.parent.close()
-
-            elif entry.startswith('z'):                     # Set zoom
-                zoom = int(entry[1:])
-                if zoom < 1:                                # Must be positive
-                    hasError = 1
-                else:
-                    self.parent.change('z', zoom)
-            elif entry.startswith('d'):                     # Set distance
-                distance = int(entry[1:])
-                if distance < 1:
-                    hasError = 1
-                else:
-                    self.parent.change('d', distance)
-            elif entry.startswith('v'):                     # Set viewing axis
-                viewAxis = [float(num) for num in entry[1:].split(',')]
-                if len(viewAxis) < 3:   # Add omega if axis specified in 3D
-                    viewAxis.append(pi/2)
-                if len(viewAxis) != 3:  # After adding omega, length must be 3
-                    hasError = 1
-                else:
-                    self.set_view(viewAxis)
-
-            elif entry.startswith('li'):                # Set light intensity
-                lint = float(entry[2:])
-                if lint < 0 or lint > 2:
-                    hasError = 1
-                else:
-                    self.parent.change('li', lint)
-            elif entry.startswith('la'):                # Set light axis
-                laxis = [float(num) for num in entry[2:].split(',')]
-                if len(laxis) < 3:
-                    laxis.append(pi/2)
-                if len(laxis) != 3:
-                    hasError = 1
-                else:
-                    self.change('la', laxis)
-            elif entry.startswith('lc'):                # Set light colour
-                lightColour = [int(num) for num in entry[2:].split(',')]
-                if len(lightColour) != 3:
-                    hasError = 1
-                else:
-                    self.set_light(lightColour)
-
-            elif entry.startswith('r'):                 # Set rotation axis
-                rotAxis = entry[1:].split('/')
-                if len(rotAxis) == 2:       # 3D rotation plane, two vectors
-                    u = list(map(float, rotAxis[0].split(',')))
-                    v = list(map(float, rotAxis[1].split(',')))
-                    if (len(u) != 4 or len(v) != 4):
-                        hasError = 1
-                    else:
-                        self.set_rotax((u, v))
-                elif len(rotAxis) == 1:     # 2D rotation axis, one vector
-                    u = list(map(float, rotAxis[0].split(',')))
-                    if len(u) == 3:
-                        u.append(0)         # Cartesian coordinates, add 0
-                    if len(u) != 4:
-                        hasError = 1
-                    else:
-                        self.set_rotax(u, [0,0,0,1])    # Normal to w-axis
-                else:
-                    hasError = 1
-
-            else:
-                creator = Creator(entry)
-                polytope = creator.get_polytope()
-                if not polytope:
-                    hasError = 1
-                else:
-                    self._currPolytope = polytope
-                    if creator.get_wythoff():
-                        self._currWythoff,self._noSnub = creator.get_wythoff()
-                        if self._noSnub == 1:
-                            self.parent.change('b')
-                    self.set_rotax(self.rotAxis)
-                    self.render()   # Create new polytope with input
-        except:
-            hasError = 1
-
-        if hasError == 1:
-            self.parent.set_status('badinput')
-        self.parent.inputText.set('')   # Clear the input box
-
-    def _view(self, points):
+    def _view(self, points, viewAxis):
         # Project 4D points on the plane normal to the viewing axis.
         # points: a list of points in 4D (list)
         #         all elements are in spherical coordinates (list, len=4)
+        # viewAxis: the viewing axis in spherical coordinates (list, len=3)
         # return: a list of points on the viewing plane (list)
         #         all elements are in Cartesian coordinates (list, len=2)
 
-        so = math.sin(self._viewAxis[2])
-        co = math.cos(self._viewAxis[2])
-        sp = math.sin(self._viewAxis[1])
-        cp = math.cos(self._viewAxis[1])
-        st = math.sin(self._viewAxis[0])
-        ct = math.cos(self._viewAxis[0])
+        so = math.sin(viewAxis[2])
+        co = math.cos(viewAxis[2])
+        sp = math.sin(viewAxis[1])
+        cp = math.cos(viewAxis[1])
+        st = math.sin(viewAxis[0])
+        ct = math.cos(viewAxis[0])
 
         u = (so*sp*ct, so*sp*st, so*cp, co)
         w = (-st, ct, 0, 0)
@@ -1584,19 +1605,19 @@ class Canvas(tk.Canvas):
         for x,y,z,w in points:
             t = (f-x*u[0]-y*u[1]-z*u[2]-w*u[3])/ \
                 (d-x*u[0]-y*u[1]-z*u[2]-w*u[3])
-            if abs(self._viewAxis[2]) < EPSILON:
-                if abs(self._viewAxis[1] - pi/2) < EPSILON:
+            if abs(viewAxis[2]) < EPSILON:
+                if abs(viewAxis[1] - pi/2) < EPSILON:
                     m = (1-t)*-z*sp
-                    if (abs(self._viewAxis[0]) < EPSILON or
-                        abs(self._viewAxis[0] - pi) < EPSILON):
+                    if (abs(viewAxis[0]) < EPSILON or
+                        abs(viewAxis[0] - pi) < EPSILON):
                         n = (1-t)*y*ct
                         p = (1-t)*(-x*co*sp*ct)
                     else:
                         n = (1-t)*(x-y*ct/st)*-st
                         p = ((1-t)*y-n*ct)/(-co*sp*st)
                 else:
-                    if (abs(self._viewAxis[0]) < EPSILON or
-                        abs(self._viewAxis[0] - pi) < EPSILON):
+                    if (abs(viewAxis[0]) < EPSILON or
+                        abs(viewAxis[0] - pi) < EPSILON):
                         n = (1-t)*y*ct
                         m = (1-t)*(x-z*sp/cp*ct)*cp/ct
                     else:
@@ -1605,9 +1626,9 @@ class Canvas(tk.Canvas):
                     p = ((1-t)*z+m*sp)/(-co*cp)
             else:
                 p = ((1-t)*w+(d*t-f)*co)/so
-                if abs(self._viewAxis[1]) < EPSILON:
-                    if (abs(self._viewAxis[0]) < EPSILON or
-                        abs(self._viewAxis[0] - pi) < EPSILON):
+                if abs(viewAxis[1]) < EPSILON:
+                    if (abs(viewAxis[0]) < EPSILON or
+                        abs(viewAxis[0] - pi) < EPSILON):
                         n = (1-t)*y*ct
                         m = (1-t)*x*cp*ct
                     else:
@@ -1615,8 +1636,8 @@ class Canvas(tk.Canvas):
                         m = ((1-t)*y-n*ct)/(cp*st)
                 else:
                     m = -((1-t)*z+(d*t-f)*so*sp+p*co*cp)/sp
-                    if (abs(self._viewAxis[0]) < EPSILON or
-                        abs(self._viewAxis[0] - pi) < EPSILON):
+                    if (abs(viewAxis[0]) < EPSILON or
+                        abs(viewAxis[0] - pi) < EPSILON):
                         n = (1-t)*y*ct
                     else:
                         n = -((1-t)*x+(d*t-f)*so*sp*ct-m*cp*ct+p*co*sp*ct)/st
@@ -1630,13 +1651,23 @@ class Canvas(tk.Canvas):
         w = self.winfo_width()//2   # Center the frame
         h = self.winfo_height()//2
 
+        # Get viewAxis and lightAxis data from parent
+        viewAxis = [self.parent.vtheta.get(), self.parent.vphi.get(),
+                    self.parent.vomega.get()]
+        # Light axis only has theta and phi, omega will always be 1.57
+        lightAxis = [self.parent.ltheta.get(), self.parent.lphi.get(), pi/2]
+        laxis = convert([self.parent.dist.get()] + lightAxis,True)
+        lint = self.parent.lint.get()
+        lcol = [self.parent.lred.get(), self.parent.lgreen.get(),
+                self.parent.lblue.get()]
+
         # Draw the sphere overlay
         if w != 0 and h != 0 and self.parent.sphere.get() == True:
             # Draw the lines of longitude and latitude
             # _view flipped the x-coordinates upside down for some reason
             # w and h map the viewing plane origin to the centre of the screen
             points = [(-point[0]+w, point[1]+h) for point in
-                      self._view(self._sphere.get_points())]
+                      self._view(self._sphere.get_points(), viewAxis)]
             edges = self._sphere.get_edges()
             for edge in edges:
                 self.create_line(points[edge[0]], points[edge[1]],
@@ -1647,7 +1678,8 @@ class Canvas(tk.Canvas):
             # Half-length of the axis, hard-coded, ZeroDivisionError somewhere
             l = 0.3 * RADIUS * self.parent.dist.get() / self.parent.zoom.get()
             axes = [normalize(axis, [l]) for axis in self._axes.get_points()]
-            points = [(-point[0]+w, point[1]+h) for point in self._view(axes)]
+            points = [(-point[0]+w, point[1]+h) for point in
+                      self._view(axes, viewAxis)]
             edges = self._axes.get_edges()
             for i,edge in enumerate(edges):
                 self.create_line(points[edge[0]], points[edge[1]],
@@ -1657,16 +1689,10 @@ class Canvas(tk.Canvas):
             return      # Do nothing if the polytope is empty
 
         # Draw the actual polytope, since we know it exists
-        self.parent.set_status('faces') # Show what faces it has
         points = [(-point[0]+w, point[1]+h) for point in
-                  self._view(self._currPolytope.get_points())]
+                  self._view(self._currPolytope.get_points(), viewAxis)]
         # As the camera moves away, the light source moves the same distance
-        camera = convert([self.parent.dist.get()] + self._viewAxis,True)
-        # Light axis only has theta and phi, omega will always be 1.57
-        lightAxis = [self.parent.ltheta.get(), self.parent.lphi.get(), pi/2]
-        laxis = convert([self.parent.dist.get()] + lightAxis,True)
-        lint = self.parent.lint.get()
-        lcol = self._lightColour
+        camera = convert([self.parent.dist.get()] + viewAxis,True)
 
         # Display by drawing polygons in normal mode
         if self.parent.wire.get() == False:
@@ -1728,28 +1754,13 @@ class Canvas(tk.Canvas):
             closest = self.parent.dist.get() - RADIUS
             for d,e in order:
                 # Colour of closest line is 0, colour of furthest line is 240
-                col = int(120 * (d - closest) / RADIUS)
+                col = max(0, min(255, int(120 * (d - closest) / RADIUS)))
                 rgb = '#' + '{0:02x}{0:02x}{0:02x}'.format(col)
                 # Width of closest line is 5, width of furthest line is 1
                 width = int(5 - 2 * (d - closest) / RADIUS)
                 self.create_line(points[edges[e][0]], points[edges[e][1]],
                                  fill=rgb, width=width)
             return
-
-    def reset(self):
-        # Clear the canvas and reset all variables to default state.
-        self.delete(tk.ALL)
-        self._currPolytope = Polytope([])   # Empty polytope to rotate
-        self.set_rotax('xw')
-        self.set_view([0, 0, pi/2])
-        self.set_light([255,255,255])
-        self.parent.change('r')
-        if self.get_data('star') == 1:
-            self.parent.change('w')
-        if self._noSnub == 1:
-            self.parent.change('b')
-        self.parent.set_status('clear')
-        self.render()
 
 
 
@@ -1924,7 +1935,7 @@ class Polytope(Object):
                 self._remove_faces()
         else:
             super().__init__([], [])    # Empty polytope, only rotates
-            self.star = 0
+            self.star = False
 
     def _set_faces(self):
         # Create a dictionary of faces, a dictionary of face sides,
