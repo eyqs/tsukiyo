@@ -1,19 +1,21 @@
 """
-Polytope Player v0.89
+Polytope Player v0.90
 
 This program lets you play with polytopes!
-The main class now handles the setter functions in canvas,
-since they were already changing self.parent.foo anyway.
-The omega sliders are set to pi/2 and disabled in only3D.
-Also, some minor fixes for set_bar and changing rotAxis.
-set_colours isn't doing anything so it's gone... for now.
+Now, the right GUI sidebar can be collapsed,
+arrow keys can rotate and zoom the polytope,
+validation handles ints and floats separately,
+and the bar buttons are disabled when there is
+no Wythoff polyhedron currently being displayed.
+I have decided to push one commit every single day,
+starting today, until polytope is finished. Let's go.
 """
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
 import random
 
-TITLE = 'Polytope Player v0.89'
+TITLE = 'Polytope Player v0.90'
 DESCRIPTION = '\nThis script lets you play with polytopes.'
 WIDTH = 600
 HEIGHT = 550
@@ -176,6 +178,7 @@ class Main(ttk.Frame):
     Public variables:
     parent              Parent of class (tk.Tk)
     canvas              Instance of Canvas class (Canvas)
+    guiRight            Right collapsable sidebar (ttk.Frame)
     statusLabel         To allow statusText to clear itself (ttk.Label)
     statusText          To display the current status (tk.StringVar)
     inputText           To display the current input (tk.StringVar)
@@ -202,6 +205,7 @@ class Main(ttk.Frame):
     _make_menus         Initialize dropdown menus.
     _make_popups        Create the actual pop-up windows.
     _initUI             Initialize GUI placement and bind buttons.
+    _collapse           Collapse the right sidebar.
     _valid              Ensure that scale entry inputs are valid.
     _poll               Handle events when buttons are pressed.
     _mouse_down
@@ -318,9 +322,9 @@ class Main(ttk.Frame):
         self.canvas = Canvas(self)
         self.canvas.grid(row=1, column=0, padx=10,
                          sticky=tk.N+tk.E+tk.S+tk.W)
-        guiRight = ttk.Frame(self)
+        self.guiRight = ttk.Frame(self)
         # 10px padding on right but 0px on left since canvas is already padded
-        guiRight.grid(row=1, column=1, padx=(0,10), sticky=tk.N)
+        self.guiRight.grid(row=1, column=1, padx=(0,10), sticky=tk.N)
         guiBottom = ttk.Frame(self)
         guiBottom.columnconfigure(0, weight=1)
         guiBottom.grid(row=2, column=0, columnspan=2,
@@ -329,15 +333,15 @@ class Main(ttk.Frame):
         # Grid guiRight widgets: 21 rows, 3 columns
 
         # Grid rotate label, 2 rotate buttons, and 6 rotation axis buttons
-        rotateLabel = ttk.Label(guiRight, text='Rotate:')
+        rotateLabel = ttk.Label(self.guiRight, text='Rotate:')
         rotateLabel.grid(row=0, column=0, columnspan=3)
-        leftRotBtn = ttk.Button(guiRight, image=self._leftBtn,
+        leftRotBtn = ttk.Button(self.guiRight, image=self._leftBtn,
                                 command=lambda: self.canvas.rotate(0))
         leftRotBtn.bind('<Button-1>', lambda event: self._mouse_down('r0'))
         leftRotBtn.bind('<ButtonRelease-1>', self._mouse_up)
         leftRotBtn.bind('<Key-Return>', lambda event: self.canvas.rotate(0))
         leftRotBtn.grid(row=1, column=0, columnspan=2, sticky=tk.W)
-        rightRotBtn = ttk.Button(guiRight, image=self._rightBtn,
+        rightRotBtn = ttk.Button(self.guiRight, image=self._rightBtn,
                                  command=lambda: self.canvas.rotate(1))
         rightRotBtn.bind('<Button-1>', lambda event: self._mouse_down('r1'))
         rightRotBtn.bind('<ButtonRelease-1>', self._mouse_up)
@@ -348,27 +352,27 @@ class Main(ttk.Frame):
         self.rotBtns = ['xw', 'yw', 'zw', 'xy', 'yz', 'xz']
         for i,t in enumerate(self.rotBtns):
             # Use default variable to ensure lambdas have different arguments
-            b = ttk.Button(guiRight, text=t, width=5,
+            b = ttk.Button(self.guiRight, text=t, width=5,
                            command=lambda t=t: self.set_rotax(t))
             b.bind('<Key-Return>', lambda event,t=t: self.set_rotax(t))
             b.grid(row=int(2+i/3), column=i%3)
             self.rotBtns[i] = b     # Replace text with actual buttons
 
         # Grid Wythoff label and 9 Wythoff bar buttons
-        wythoffLabel = ttk.Label(guiRight, text='Wythoff:')
+        wythoffLabel = ttk.Label(self.guiRight, text='Wythoff:')
         wythoffLabel.grid(row=4, column=0, columnspan=3, pady=(20,0))
         self.barBtns = [('(pqs)', 'a'), ('(|pqs)', 'b'), ('(pqs|)', 'c'),
                         ('(p|qs)', 'p'), ('(q|sp)', 'q'), ('(s|pq)', 's'),
                         ('(pq|s)', 'pq'), ('(qs|p)', 'qs'), ('(sq|q)', 'sp')]
         for i,(t,c) in enumerate(self.barBtns):
-            b = ttk.Button(guiRight, text=t, width=5,
+            b = ttk.Button(self.guiRight, text=t, width=5,
                            command=lambda c=c: self.canvas.set_bar(c))
             b.bind('<Key-Return>', lambda event,c=c: self.canvas.set_bar(c))
             b.grid(row=int(5+i/3), column=i%3)
             self.barBtns[i] = b
 
         # Grid light axis and intensity labels, scales, and displays
-        lightLabel = ttk.Label(guiRight, text='Light Properties:')
+        lightLabel = ttk.Label(self.guiRight, text='Light Properties:')
         lightLabel.grid(row=9, column=0, columnspan=3, pady=(20,0))
         self.lint = tk.DoubleVar()
         self.ltheta = tk.DoubleVar()
@@ -376,18 +380,19 @@ class Main(ttk.Frame):
         lightWidgets = [('cd', self.lint, 2), ('θ', self.ltheta, 6.28),
                         ('φ', self.lphi, 3.14)]     # t = text, v = variable
         for i,(t,v,o) in enumerate(lightWidgets):   # o = maximum value (to)
-            l = ttk.Label(guiRight, text=t)
+            l = ttk.Label(self.guiRight, text=t)
             l.grid(row=10, column=i)
-            d = ttk.Entry(guiRight, textvariable=v, width=4, validate='key',
-                          validatecommand=(self.register(self._valid),'%P',o))
+            d = ttk.Entry(self.guiRight, textvariable=v, width=4,
+                          validate='key', validatecommand=(self.register(
+                          self._valid), '%P', o, 'float'))
             d.bind('<Key-Return>', lambda event: self.change('s'))
             d.grid(row=11, column=i)
-            s = ttk.Scale(guiRight, orient=tk.VERTICAL, from_=0, to=o,
+            s = ttk.Scale(self.guiRight, orient=tk.VERTICAL, from_=0, to=o,
                           variable=v, command=lambda event: self.change('s'))
             s.grid(row=12, column=i)
 
         # Grid light colours labels, scales, and displays
-        colourLabel = ttk.Label(guiRight, text='Light Colours:')
+        colourLabel = ttk.Label(self.guiRight, text='Light Colours:')
         colourLabel.grid(row=13, column=0, columnspan=3, pady=(20,0))
         self.lred = tk.DoubleVar()
         self.lgreen = tk.DoubleVar()
@@ -395,18 +400,19 @@ class Main(ttk.Frame):
         colourWidgets = [('Red', self.lred, 255), ('Green', self.lgreen, 255),
                          ('Blue', self.lblue, 255)]
         for i,(t,v,o) in enumerate(colourWidgets):
-            l = ttk.Label(guiRight, text=t)
+            l = ttk.Label(self.guiRight, text=t)
             l.grid(row=14, column=i)
-            d = ttk.Entry(guiRight, textvariable=v, width=4, validate='key',
-                          validatecommand=(self.register(self._valid),'%P',o))
+            d = ttk.Entry(self.guiRight, textvariable=v, width=4,
+                          validate='key', validatecommand=(self.register(
+                          self._valid), '%P', o, 'int'))
             d.bind('<Key-Return>', lambda event: self.change('s'))
             d.grid(row=15, column=i)
-            s = ttk.Scale(guiRight, orient=tk.VERTICAL, from_=0, to=o,
+            s = ttk.Scale(self.guiRight, orient=tk.VERTICAL, from_=0, to=o,
                           variable=v, command=lambda event: self.change('s'))
             s.grid(row=16, column=i)
 
         # Grid view axis labels, scales, and displays
-        viewLabel = ttk.Label(guiRight, text='Camera Direction:')
+        viewLabel = ttk.Label(self.guiRight, text='Camera Direction:')
         viewLabel.grid(row=17, column=0, columnspan=3, pady=(20,0))
         self.vtheta = tk.DoubleVar()
         self.vphi = tk.DoubleVar()
@@ -414,13 +420,14 @@ class Main(ttk.Frame):
         self.viewWidgets = [('θ', self.vtheta, 6.28), ('φ', self.vphi, 3.14),
                        ('ω', self.vomega, 3.14)]
         for i,(t,v,o) in enumerate(self.viewWidgets):
-            l = ttk.Label(guiRight, text=t)
+            l = ttk.Label(self.guiRight, text=t)
             l.grid(row=18, column=i)
-            d = ttk.Entry(guiRight, textvariable=v, width=4, validate='key',
-                          validatecommand=(self.register(self._valid),'%P',o))
+            d = ttk.Entry(self.guiRight, textvariable=v, width=4,
+                          validate='key', validatecommand=(self.register(
+                          self._valid), '%P', o, 'float'))
             d.bind('<Key-Return>', lambda event: self.change('s'))
             d.grid(row=19, column=i)
-            s = ttk.Scale(guiRight, orient=tk.VERTICAL, from_=0, to=o,
+            s = ttk.Scale(self.guiRight, orient=tk.VERTICAL, from_=0, to=o,
                           variable=v, command=lambda event: self.change('s'))
             s.grid(row=20, column=i)
             self.viewWidgets[i] = s
@@ -435,7 +442,7 @@ class Main(ttk.Frame):
         self.rvz = tk.DoubleVar()
         self.rvw = tk.DoubleVar()
 
-        # Grid guiBottom widgets: 5 rows, 7 columns
+        # Grid guiBottom widgets: 6 rows, 7 columns
 
         # Grid status label, text box, and link them to statusText, inputText
         self.statusText = tk.StringVar()
@@ -503,27 +510,55 @@ class Main(ttk.Frame):
         # Grid zoom display, distance display, and link them to zoom, dist
         self.zoom = tk.IntVar()
         zoomDisplay = ttk.Label(guiBottom, textvariable=self.zoom)
-        zoomDisplay.grid(row=4, column=0, columnspan=4, sticky=tk.E)
+        zoomDisplay.grid(row=4, column=1, columnspan=3, sticky=tk.E)
         self.dist = tk.IntVar()
         distDisplay = ttk.Label(guiBottom, textvariable=self.dist)
         distDisplay.grid(row=4, column=4, columnspan=3, sticky=tk.E)
+        # Make fifth row same height as previous rows that have button icons
+        guiBottom.rowconfigure(4,minsize=25)
+
+        # Grid collapse button
+        self.collapseText = tk.StringVar()
+        self.collapseText.set('Collapse Sidebar >>')
+        self.collapseBtn = ttk.Button(guiBottom, command=self._collapse,
+                                      textvariable=self.collapseText)
+        self.collapseBtn.bind('<Key-Return>', self._collapse)
+        self.collapseBtn.grid(row=5, column=1, columnspan=6, sticky=tk.E)
 
         self.change('r')    # Initialize all properties with default values
         self.set_status('clear')
 
-    def _valid(self, entry, to):
+    def _collapse(self):
+        # Collapse the right sidebar.
+        if self.collapseText.get() == 'Collapse Sidebar >>':
+            self.collapseText.set('Show Sidebar <<')
+            self.guiRight.grid_remove()
+        elif self.collapseText.get() == 'Show Sidebar <<':
+            self.collapseText.set('Collapse Sidebar >>')
+            self.guiRight.grid()
+
+    def _valid(self, entry, to, numType):
         # Ensure that scale entry inputs are valid.
         # entry: the value of the entry if the edit is allowed (str)
+        # numType: the type of the entry, 'int' or 'float' (str)
         # to: the maximum value of the entry (float)
         # return: whether or not the edit is allowed (bool)
         if entry == '':
             return True         # Always allow empty string, to clear entry
         if len(entry) > 4:
             return False        # Too long to fit, is invalid
-        try:
-            value = float(entry)
-        except ValueError:
-            return False        # Not a float, is invalid
+        if numType == 'int':
+            try:
+                value = int(entry)
+            except ValueError:
+                return False    # Not an int, is invalid
+        elif numType == 'float':
+            try:
+                value = float(entry)
+            except ValueError:
+                return False    # Not a float, is invalid
+        else:
+            print(numType)
         if value < 0 or value > float(to):
             return False        # Out of from_ and to bounds, is invalid
         return True             # Otherwise, is valid
@@ -609,11 +644,19 @@ class Main(ttk.Frame):
             self.wire.set(True)
             self.wireCheck.config(state=tk.DISABLED)
 
+        elif change == 'y':
+            if value == 0:      # Disable Wythoff buttons if not a Wythoff
+                for i in range(9):
+                    self.barBtns[i].config(state=tk.DISABLED)
+            elif value == 1:    # Enable Wythoff buttons if it is a Wythoff
+                for i in range(9):
+                    self.barBtns[i].config(state=tk.NORMAL)
+
         elif change == '3':     # Disable 4D features if only 3D mode is on
             if self.only3D.get() == True:   # Disable 4D view button
                 self.viewBtns[3].config(state=tk.DISABLED)
                 self.viewWidgets[2].state(['disabled'])
-                for i in range(3,6):        # Disable 4D rotation buttons
+                for i in range(3,6):    # Disable 4D rotation buttons
                     self.rotBtns[i].config(state=tk.DISABLED)
                 self.vomega.set(1.57)   # Reset omega component of view axis
                 self.ruw.set(0)         # Reset w-component of rotation axis
@@ -622,12 +665,12 @@ class Main(ttk.Frame):
                 self.rvz.set(0)
                 self.rvw.set(1)
                 self.wireCheck.config(state=tk.NORMAL)
-            else:                           # Enable everything above
+            else:                       # Enable everything above
                 self.viewBtns[3].config(state=tk.NORMAL)
                 self.viewWidgets[2].state(['!disabled'])
                 for i in range(3,6):
                     self.rotBtns[i].config(state=tk.NORMAL)
-                self.wire.set(True)         # Force wireframe mode to be true
+                self.wire.set(True)     # Force wireframe mode to be true
                 self.wireCheck.config(state=tk.DISABLED)
 
         elif change == 's':     # Round scale labels to two decimal places
@@ -675,7 +718,9 @@ class Main(ttk.Frame):
                 self.dist.set(int(ZOOM*RADIUS*RETINA/self.unitDist**(3/2)))
                 self.sphere.set(False)
                 self.axes.set(False)
+                self.only3D.set(True)
                 self.change('3')    # Set 3D mode to True
+                self.change('y', 0) # Not a Wythoff
             except:
                 return
 
@@ -1479,7 +1524,6 @@ class Canvas(tk.Canvas):
         self._currPolytope = Polytope([])
         self._sphere = Sphere(SPHERENUM, RADIUS)
         self._axes = Axes()
-        self._currWythoff = ['2','3','3']
         self._noSnub = False
 
     def make_polytope(self, entry):
@@ -1494,12 +1538,15 @@ class Canvas(tk.Canvas):
             polytope = creator.get_polytope()
             if polytope:
                 self._currPolytope = polytope
-                if creator.get_wythoff():
+                if creator.get_wythoff()[0]:
                     self._currWythoff, self._noSnub = creator.get_wythoff()
+                    self.parent.change('y', 1)  # Yes, this is a Wythoff
                     if self._noSnub == True:
                         self.parent.change('b')
                     if self._currPolytope.star == True:
                         self.parent.change('w')
+                else:
+                    self.parent.change('y', 0)  # No, this is not a Wythoff
                 self.set_rotaxes(None)
                 self.render()
 
@@ -2391,4 +2438,8 @@ class Axes(Object):
 
 root = tk.Tk()
 main = Main(root)
+root.bind('<Up>', lambda event: main.change('z+'))
+root.bind('<Down>', lambda event: main.change('z-'))
+root.bind('<Left>', lambda event: main.canvas.rotate(0))
+root.bind('<Right>', lambda event: main.canvas.rotate(1))
 root.mainloop()
