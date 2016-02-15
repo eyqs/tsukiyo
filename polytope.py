@@ -1,16 +1,17 @@
 """
-Polytope Player v0.91
+Polytope Player v0.92
 
 This program lets you play with polytopes!
-guiRight has been expanded with rotation axis, maybe a bit too much.
-Second day of commits and I'm already committing five-minute changes...
+Updating the rotation axis scales now actually updates the rotation axes.
+The scale length is now small enough to actually fit them on the screen,
+and enabling only3D disables 4D-related scales, such as the rotvWidgets.
 """
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
 import random
 
-TITLE = 'Polytope Player v0.91'
+TITLE = 'Polytope Player v0.92'
 DESCRIPTION = '\nThis script lets you play with polytopes.'
 WIDTH = 600
 HEIGHT = 550
@@ -180,7 +181,9 @@ class Main(ttk.Frame):
     rotBtns             To allow the buttons to be disabled (list)
     barBtns                 all elements are ttk.Buttons
     viewBtns
-    viewWidgets         To allow the scale to be disabled (list of ttk.Scales)
+    viewWidgets         To allow the scales to be disabled (list)
+    rotuWidgets             all elements are ttk.Scales
+    rotvWidgets
     lint ltheta lphi    To keep track of light properties (tk.DoubleVars)
     lred lgreen lblue   To keep track of light colours (tk.IntVars)
     vtheta vphi vomega  To keep track of camera location (tk.DoubleVars)
@@ -384,6 +387,7 @@ class Main(ttk.Frame):
             d.bind('<Key-Return>', lambda event: self.change('s'))
             d.grid(row=11, column=i)
             s = ttk.Scale(self.guiRight, orient=tk.VERTICAL, from_=0, to=o,
+                          length=70,
                           variable=v, command=lambda event: self.change('s'))
             s.grid(row=12, column=i)
 
@@ -404,6 +408,7 @@ class Main(ttk.Frame):
             d.bind('<Key-Return>', lambda event: self.change('s'))
             d.grid(row=15, column=i)
             s = ttk.Scale(self.guiRight, orient=tk.VERTICAL, from_=0, to=o,
+                          length=70,
                           variable=v, command=lambda event: self.change('s'))
             s.grid(row=16, column=i)
 
@@ -424,6 +429,7 @@ class Main(ttk.Frame):
             d.bind('<Key-Return>', lambda event: self.change('s'))
             d.grid(row=19, column=i)
             s = ttk.Scale(self.guiRight, orient=tk.VERTICAL, from_=0, to=o,
+                          length=70,
                           variable=v, command=lambda event: self.change('s'))
             s.grid(row=20, column=i)
             self.viewWidgets[i] = s
@@ -446,6 +452,7 @@ class Main(ttk.Frame):
             d.bind('<Key-Return>', lambda event: self.change('s'))
             d.grid(row=23, column=i)
             s = ttk.Scale(self.guiRight, orient=tk.VERTICAL, from_=0, to=o,
+                          length=70,
                           variable=v, command=lambda event: self.change('s'))
             s.grid(row=24, column=i)
             self.rotuWidgets[i] = s
@@ -468,6 +475,7 @@ class Main(ttk.Frame):
             d.bind('<Key-Return>', lambda event: self.change('s'))
             d.grid(row=27, column=i)
             s = ttk.Scale(self.guiRight, orient=tk.VERTICAL, from_=0, to=o,
+                          length=70,
                           variable=v, command=lambda event: self.change('s'))
             s.grid(row=28, column=i)
             self.rotvWidgets[i] = s
@@ -686,20 +694,24 @@ class Main(ttk.Frame):
             if self.only3D.get() == True:   # Disable 4D view button
                 self.viewBtns[3].config(state=tk.DISABLED)
                 self.viewWidgets[2].state(['disabled'])
+                self.vomega.set(1.57)   # Reset omega component of view axis
                 for i in range(3,6):    # Disable 4D rotation buttons
                     self.rotBtns[i].config(state=tk.DISABLED)
-                self.vomega.set(1.57)   # Reset omega component of view axis
-                self.ruw.set(0)         # Reset w-component of rotation axis
-                self.rvx.set(0)         # Set the other rotation axis as the
-                self.rvy.set(0)         # w-axis, so all rotations are in 3D
-                self.rvz.set(0)
-                self.rvw.set(1)
+                for i in range(3):      # Disable second rotation axis scales
+                    self.rotvWidgets[i].state(['disabled'])
+                self.ruw.set('{0:.2f}'.format(0))   # Reset w-component
+                self.rvx.set('{0:.2f}'.format(0))   # Set the second rotation
+                self.rvy.set('{0:.2f}'.format(0))   # axis as the w-axis, so
+                self.rvz.set('{0:.2f}'.format(0))   # all rotations are in 3D
+                self.rvw.set('{0:.2f}'.format(1))
                 self.wireCheck.config(state=tk.NORMAL)
             else:                       # Enable everything above
                 self.viewBtns[3].config(state=tk.NORMAL)
                 self.viewWidgets[2].state(['!disabled'])
                 for i in range(3,6):
                     self.rotBtns[i].config(state=tk.NORMAL)
+                for i in range(4):
+                    self.rotvWidgets[i].state(['!disabled'])
                 self.wire.set(True)     # Force wireframe mode to be true
                 self.wireCheck.config(state=tk.DISABLED)
 
@@ -713,6 +725,14 @@ class Main(ttk.Frame):
                 except tk.TclError:     # Error because tk expects a float
                     s.set(0)            # but the entry may be an empty string
                 s.set('{0:.2f}'.format(s.get()))
+            # Don't update these scales if only3D mode is on
+            if self.only3D.get() == True:
+                self.vomega.set(1.57)
+                self.ruw.set('{0:.2f}'.format(0))
+                self.rvx.set('{0:.2f}'.format(0))
+                self.rvy.set('{0:.2f}'.format(0))
+                self.rvz.set('{0:.2f}'.format(0))
+                self.rvw.set('{0:.2f}'.format(1))
             # Round RGB colour labels to zero decimal places
             for s in (self.lred, self.lgreen, self.lblue):
                 try:
@@ -722,9 +742,14 @@ class Main(ttk.Frame):
                 s.set('{0:.0f}'.format(s.get()))
             # Update the current light colour and camera position
             self.set_view([s.get() for s in
-                                  (self.vtheta, self.vphi, self.vomega)])
+                           (self.vtheta, self.vphi, self.vomega)])
             self.set_light([s.get() for s in
-                                   (self.lred, self.lgreen, self.lblue)])
+                            (self.lred, self.lgreen, self.lblue)])
+            self.set_rotax([[s.get() for s in
+                             (self.rux, self.ruy, self.ruz, self.ruw)],
+                            [s.get() for s in 
+                             (self.rvx, self.rvy, self.rvz, self.rvw)]])
+            self.set_status('')     # Don't set any status
 
         elif change == 'li':
             self.lint.set('{0:.2f}'.format(value))
