@@ -1,21 +1,16 @@
 """
-Polytope Player v0.90
+Polytope Player v0.91
 
 This program lets you play with polytopes!
-Now, the right GUI sidebar can be collapsed,
-arrow keys can rotate and zoom the polytope,
-validation handles ints and floats separately,
-and the bar buttons are disabled when there is
-no Wythoff polyhedron currently being displayed.
-I have decided to push one commit every single day,
-starting today, until polytope is finished. Let's go.
+guiRight has been expanded with rotation axis, maybe a bit too much.
+Second day of commits and I'm already committing five-minute changes...
 """
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
 import random
 
-TITLE = 'Polytope Player v0.90'
+TITLE = 'Polytope Player v0.91'
 DESCRIPTION = '\nThis script lets you play with polytopes.'
 WIDTH = 600
 HEIGHT = 550
@@ -313,24 +308,25 @@ class Main(ttk.Frame):
         style.configure('TCheckbutton', background=COLOURS[4][0])
 
         # Grid main widget frames
-        # Title on top, canvas and guiRight on middle, guiBottom on bottom
+        # Everything else on left, guiRight on right
+        # On left: title on top, canvas on middle, guiBottom on bottom
 
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
+        self.guiRight = ttk.Frame(self)
+        # 10px padding on right but 0px on left since canvas is already padded
+        self.guiRight.grid(row=0, column=1, rowspan=3, padx=(0,10),
+                           pady=20, sticky=tk.N)
         titleLabel = ttk.Label(self, text=TITLE)
-        titleLabel.grid(row=0, column=0, columnspan=2, pady=10)
+        titleLabel.grid(row=0, column=0, pady=10)
         self.canvas = Canvas(self)
         self.canvas.grid(row=1, column=0, padx=10,
                          sticky=tk.N+tk.E+tk.S+tk.W)
-        self.guiRight = ttk.Frame(self)
-        # 10px padding on right but 0px on left since canvas is already padded
-        self.guiRight.grid(row=1, column=1, padx=(0,10), sticky=tk.N)
         guiBottom = ttk.Frame(self)
         guiBottom.columnconfigure(0, weight=1)
-        guiBottom.grid(row=2, column=0, columnspan=2,
-                        padx=10, pady=(0,20), sticky=tk.E+tk.W)
+        guiBottom.grid(row=2, column=0, padx=10, pady=(0,20),sticky=tk.E+tk.W)
 
-        # Grid guiRight widgets: 21 rows, 3 columns
+        # Grid guiRight widgets: 29 rows, 3 columns
 
         # Grid rotate label, 2 rotate buttons, and 6 rotation axis buttons
         rotateLabel = ttk.Label(self.guiRight, text='Rotate:')
@@ -418,7 +414,7 @@ class Main(ttk.Frame):
         self.vphi = tk.DoubleVar()
         self.vomega = tk.DoubleVar()
         self.viewWidgets = [('θ', self.vtheta, 6.28), ('φ', self.vphi, 3.14),
-                       ('ω', self.vomega, 3.14)]
+                            ('ω', self.vomega, 3.14)]
         for i,(t,v,o) in enumerate(self.viewWidgets):
             l = ttk.Label(self.guiRight, text=t)
             l.grid(row=18, column=i)
@@ -432,15 +428,49 @@ class Main(ttk.Frame):
             s.grid(row=20, column=i)
             self.viewWidgets[i] = s
 
-        # Keep rotation axis-plane variables, but don't display them
+        # Grid rotation axis-plane labels, scales, and displays
+        rotuLabel = ttk.Label(self.guiRight, text='Rotation axis:')
+        rotuLabel.grid(row=21, column=0, columnspan=3, pady=(20,0))
         self.rux = tk.DoubleVar()
         self.ruy = tk.DoubleVar()
         self.ruz = tk.DoubleVar()
         self.ruw = tk.DoubleVar()
+        self.rotuWidgets = [('θ', self.rux, 6.28), ('φ', self.ruy, 3.14),
+                            ('ω', self.ruz, 3.14)]
+        for i,(t,v,o) in enumerate(self.rotuWidgets):
+            l = ttk.Label(self.guiRight, text=t)
+            l.grid(row=22, column=i)
+            d = ttk.Entry(self.guiRight, textvariable=v, width=4,
+                          validate='key', validatecommand=(self.register(
+                          self._valid), '%P', o, 'float'))
+            d.bind('<Key-Return>', lambda event: self.change('s'))
+            d.grid(row=23, column=i)
+            s = ttk.Scale(self.guiRight, orient=tk.VERTICAL, from_=0, to=o,
+                          variable=v, command=lambda event: self.change('s'))
+            s.grid(row=24, column=i)
+            self.rotuWidgets[i] = s
+
+        # Grid rotation axis-plane labels, scales, and displays
+        rotvLabel = ttk.Label(self.guiRight, text='Second rotation axis:')
+        rotvLabel.grid(row=25, column=0, columnspan=3, pady=(20,0))
         self.rvx = tk.DoubleVar()
         self.rvy = tk.DoubleVar()
         self.rvz = tk.DoubleVar()
         self.rvw = tk.DoubleVar()
+        self.rotvWidgets = [('θ', self.rvx, 6.28), ('φ', self.rvy, 3.14),
+                            ('ω', self.rvz, 3.14)]
+        for i,(t,v,o) in enumerate(self.rotvWidgets):
+            l = ttk.Label(self.guiRight, text=t)
+            l.grid(row=26, column=i)
+            d = ttk.Entry(self.guiRight, textvariable=v, width=4,
+                          validate='key', validatecommand=(self.register(
+                          self._valid), '%P', o, 'float'))
+            d.bind('<Key-Return>', lambda event: self.change('s'))
+            d.grid(row=27, column=i)
+            s = ttk.Scale(self.guiRight, orient=tk.VERTICAL, from_=0, to=o,
+                          variable=v, command=lambda event: self.change('s'))
+            s.grid(row=28, column=i)
+            self.rotvWidgets[i] = s
 
         # Grid guiBottom widgets: 6 rows, 7 columns
 
@@ -675,7 +705,9 @@ class Main(ttk.Frame):
 
         elif change == 's':     # Round scale labels to two decimal places
             for s in (self.lint, self.ltheta, self.lphi,
-                      self.vtheta, self.vphi, self.vomega):
+                      self.vtheta, self.vphi, self.vomega,
+                      self.rux, self.ruy, self.ruz, self.ruw,
+                      self.rvx, self.rvy, self.rvz, self.rvw):
                 try:
                     s.get()
                 except tk.TclError:     # Error because tk expects a float
