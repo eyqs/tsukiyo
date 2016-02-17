@@ -1,17 +1,17 @@
 """
-Polytope Player v0.92
+Polytope Player v0.93
 
 This program lets you play with polytopes!
-Updating the rotation axis scales now actually updates the rotation axes.
-The scale length is now small enough to actually fit them on the screen,
-and enabling only3D disables 4D-related scales, such as the rotvWidgets.
+All rotation axes are now in spherical coordinates,
+and rux, ruy, ruz, ruw are now rutheta, ruphi, ruomega.
+The scale entries are now disabled along with the scales.
 """
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
 import random
 
-TITLE = 'Polytope Player v0.92'
+TITLE = 'Polytope Player v0.93'
 DESCRIPTION = '\nThis script lets you play with polytopes.'
 WIDTH = 600
 HEIGHT = 550
@@ -107,20 +107,19 @@ def cross4D(u, v, w, unit=[1]):
 def satisfy_axis_restrictions(axis):
     """
     Make an axis in spherical coordinates satisfy the restrictions:
-    0 <= theta < 2pi, 0 <= phi < pi, 0 <= omega < pi.
+    0 <= theta < 2pi, 0 <= phi < pi, 0 <= omega < pi, 0 <= whatever < pi ...
 
-    axis: the spherical coordinates of the axis, excluding r (list, len=3)
-    return: equivalent coordinates that satisfy the restrictions (list, len=3)
+    axis: the spherical coordinates of the axis, excluding r (list, len=>1)
+    return: equivalent coordinates that satisfy the restrictions (list, len=>1)
     """
     for angle in axis:
         while angle >= 2*pi:
             angle -= 2*pi
         while angle < 0:
             angle += 2*pi
-    if axis[1] > pi:
-        axis[1] = 2*pi - axis[1]
-    if axis[2] > pi:
-        axis[2] = 2*pi - axis[2]
+    for i in range(1,len(axis)):
+        if axis[i] > pi:
+            axis[i] = 2*pi - axis[i]
     return axis
 
 def convert(point, toCartesian):
@@ -184,11 +183,15 @@ class Main(ttk.Frame):
     viewWidgets         To allow the scales to be disabled (list)
     rotuWidgets             all elements are ttk.Scales
     rotvWidgets
+    viewEntries         To allow the entries to be disabled (list)
+    rotuEntries             all elements are ttk.Entrys
+    rotvEntries
     lint ltheta lphi    To keep track of light properties (tk.DoubleVars)
     lred lgreen lblue   To keep track of light colours (tk.IntVars)
     vtheta vphi vomega  To keep track of camera location (tk.DoubleVars)
-    rux ruy ruz ruw     To keep track of rotation axis-plane location
-    rvx rvy rvz rvw         (tk.DoubleVars)
+    rutheta ruphi       To keep track of rotation axis-plane location
+    ruomega rvtheta         (tk.DoubleVars)
+    rvphi rvomega
     sphere              To keep track of sphere check (tk.BooleanVar)
     axes                To keep track of axes check (tk.BooleanVar)
     wire                To keep track of wire check (tk.BooleanVar)
@@ -420,6 +423,7 @@ class Main(ttk.Frame):
         self.vomega = tk.DoubleVar()
         self.viewWidgets = [('θ', self.vtheta, 6.28), ('φ', self.vphi, 3.14),
                             ('ω', self.vomega, 3.14)]
+        self.viewEntries = []
         for i,(t,v,o) in enumerate(self.viewWidgets):
             l = ttk.Label(self.guiRight, text=t)
             l.grid(row=18, column=i)
@@ -433,16 +437,17 @@ class Main(ttk.Frame):
                           variable=v, command=lambda event: self.change('s'))
             s.grid(row=20, column=i)
             self.viewWidgets[i] = s
+            self.viewEntries.append(d)
 
         # Grid rotation axis-plane labels, scales, and displays
         rotuLabel = ttk.Label(self.guiRight, text='Rotation axis:')
         rotuLabel.grid(row=21, column=0, columnspan=3, pady=(20,0))
-        self.rux = tk.DoubleVar()
-        self.ruy = tk.DoubleVar()
-        self.ruz = tk.DoubleVar()
-        self.ruw = tk.DoubleVar()
-        self.rotuWidgets = [('θ', self.rux, 6.28), ('φ', self.ruy, 3.14),
-                            ('ω', self.ruz, 3.14)]
+        self.rutheta = tk.DoubleVar()
+        self.ruphi = tk.DoubleVar()
+        self.ruomega = tk.DoubleVar()
+        self.rotuWidgets = [('θ', self.rutheta, 6.28), ('φ', self.ruphi, 3.14),
+                            ('ω', self.ruomega, 3.14)]
+        self.rotuEntries = []
         for i,(t,v,o) in enumerate(self.rotuWidgets):
             l = ttk.Label(self.guiRight, text=t)
             l.grid(row=22, column=i)
@@ -456,16 +461,17 @@ class Main(ttk.Frame):
                           variable=v, command=lambda event: self.change('s'))
             s.grid(row=24, column=i)
             self.rotuWidgets[i] = s
+            self.rotuEntries.append(d)
 
         # Grid rotation axis-plane labels, scales, and displays
         rotvLabel = ttk.Label(self.guiRight, text='Second rotation axis:')
         rotvLabel.grid(row=25, column=0, columnspan=3, pady=(20,0))
-        self.rvx = tk.DoubleVar()
-        self.rvy = tk.DoubleVar()
-        self.rvz = tk.DoubleVar()
-        self.rvw = tk.DoubleVar()
-        self.rotvWidgets = [('θ', self.rvx, 6.28), ('φ', self.rvy, 3.14),
-                            ('ω', self.rvz, 3.14)]
+        self.rvtheta = tk.DoubleVar()
+        self.rvphi = tk.DoubleVar()
+        self.rvomega = tk.DoubleVar()
+        self.rotvWidgets = [('θ', self.rvtheta, 6.28), ('φ', self.rvphi, 3.14),
+                            ('ω', self.rvomega, 3.14)]
+        self.rotvEntries = []
         for i,(t,v,o) in enumerate(self.rotvWidgets):
             l = ttk.Label(self.guiRight, text=t)
             l.grid(row=26, column=i)
@@ -479,6 +485,7 @@ class Main(ttk.Frame):
                           variable=v, command=lambda event: self.change('s'))
             s.grid(row=28, column=i)
             self.rotvWidgets[i] = s
+            self.rotvEntries.append(d)
 
         # Grid guiBottom widgets: 6 rows, 7 columns
 
@@ -553,7 +560,7 @@ class Main(ttk.Frame):
         distDisplay = ttk.Label(guiBottom, textvariable=self.dist)
         distDisplay.grid(row=4, column=4, columnspan=3, sticky=tk.E)
         # Make fifth row same height as previous rows that have button icons
-        guiBottom.rowconfigure(4,minsize=25)
+        guiBottom.rowconfigure(4,minsize=28)
 
         # Grid collapse button
         self.collapseText = tk.StringVar()
@@ -595,8 +602,6 @@ class Main(ttk.Frame):
                 value = float(entry)
             except ValueError:
                 return False    # Not a float, is invalid
-        else:
-            print(numType)
         if value < 0 or value > float(to):
             return False        # Out of from_ and to bounds, is invalid
         return True             # Otherwise, is valid
@@ -652,19 +657,18 @@ class Main(ttk.Frame):
 
             elif event == 'view':
                 self.statusText.set('New view angle: ' + ', '.join(
-                                [str(self.vtheta.get()), str(self.vphi.get()),
-                                 str(self.vomega.get())]))
+                    [str(self.vtheta.get()), str(self.vphi.get()),
+                     str(self.vomega.get())]))
             elif event == 'lcol':
                 self.statusText.set('New light colour: ' + ', '.join(
-                                [str(self.lred.get()), str(self.lgreen.get()),
-                                 str(self.lblue.get())]))
+                    [str(self.lred.get()), str(self.lgreen.get()),
+                     str(self.lblue.get())]))
             elif event == 'rot':
                 self.statusText.set('New rotation axes: ' + ', '.join(
-                                [str(self.rux.get()), str(self.ruy.get()),
-                                 str(self.ruz.get()), str(self.ruw.get())])
-                                + ' and ' + ', '.join(
-                                [str(self.rvx.get()), str(self.rvy.get()),
-                                 str(self.rvz.get()), str(self.rvw.get())]))
+                    [str(self.rutheta.get()), str(self.ruphi.get()),
+                     str(self.ruomega.get())]) + ' and ' + ', '.join(
+                    [str(self.rvtheta.get()), str(self.rvphi.get()),
+                     str(self.rvomega.get())]))
             self.statusLabel.after(FADEDELAY, self.set_status, '')
 
     def change(self, change=None, value=0):
@@ -694,45 +698,40 @@ class Main(ttk.Frame):
             if self.only3D.get() == True:   # Disable 4D view button
                 self.viewBtns[3].config(state=tk.DISABLED)
                 self.viewWidgets[2].state(['disabled'])
+                self.viewEntries[2].state(['disabled'])
                 self.vomega.set(1.57)   # Reset omega component of view axis
                 for i in range(3,6):    # Disable 4D rotation buttons
                     self.rotBtns[i].config(state=tk.DISABLED)
                 for i in range(3):      # Disable second rotation axis scales
                     self.rotvWidgets[i].state(['disabled'])
-                self.ruw.set('{0:.2f}'.format(0))   # Reset w-component
-                self.rvx.set('{0:.2f}'.format(0))   # Set the second rotation
-                self.rvy.set('{0:.2f}'.format(0))   # axis as the w-axis, so
-                self.rvz.set('{0:.2f}'.format(0))   # all rotations are in 3D
-                self.rvw.set('{0:.2f}'.format(1))
+                    self.rotvEntries[i].state(['disabled'])
+                self.ruomega.set(1.57)  # Reset w-component
+                self.rvtheta.set('{0:.2f}'.format(0))   # Set second rotaxis
+                self.rvphi.set('{0:.2f}'.format(0))     # as w-axis, so all
+                self.rvomega.set('{0:.2f}'.format(0))   # rotations are in 3D
                 self.wireCheck.config(state=tk.NORMAL)
             else:                       # Enable everything above
                 self.viewBtns[3].config(state=tk.NORMAL)
                 self.viewWidgets[2].state(['!disabled'])
+                self.viewEntries[2].state(['!disabled'])
                 for i in range(3,6):
                     self.rotBtns[i].config(state=tk.NORMAL)
-                for i in range(4):
+                for i in range(3):
                     self.rotvWidgets[i].state(['!disabled'])
+                    self.rotvEntries[i].state(['!disabled'])
                 self.wire.set(True)     # Force wireframe mode to be true
                 self.wireCheck.config(state=tk.DISABLED)
 
         elif change == 's':     # Round scale labels to two decimal places
             for s in (self.lint, self.ltheta, self.lphi,
                       self.vtheta, self.vphi, self.vomega,
-                      self.rux, self.ruy, self.ruz, self.ruw,
-                      self.rvx, self.rvy, self.rvz, self.rvw):
+                      self.rutheta, self.ruphi, self.ruomega,
+                      self.rvtheta, self.rvphi, self.rvomega):
                 try:
                     s.get()
                 except tk.TclError:     # Error because tk expects a float
                     s.set(0)            # but the entry may be an empty string
                 s.set('{0:.2f}'.format(s.get()))
-            # Don't update these scales if only3D mode is on
-            if self.only3D.get() == True:
-                self.vomega.set(1.57)
-                self.ruw.set('{0:.2f}'.format(0))
-                self.rvx.set('{0:.2f}'.format(0))
-                self.rvy.set('{0:.2f}'.format(0))
-                self.rvz.set('{0:.2f}'.format(0))
-                self.rvw.set('{0:.2f}'.format(1))
             # Round RGB colour labels to zero decimal places
             for s in (self.lred, self.lgreen, self.lblue):
                 try:
@@ -746,9 +745,9 @@ class Main(ttk.Frame):
             self.set_light([s.get() for s in
                             (self.lred, self.lgreen, self.lblue)])
             self.set_rotax([[s.get() for s in
-                             (self.rux, self.ruy, self.ruz, self.ruw)],
+                             (self.rutheta, self.ruphi, self.ruomega)],
                             [s.get() for s in 
-                             (self.rvx, self.rvy, self.rvz, self.rvw)]])
+                             (self.rvtheta, self.rvphi, self.rvomega)]])
             self.set_status('')     # Don't set any status
 
         elif change == 'li':
@@ -847,27 +846,38 @@ class Main(ttk.Frame):
         """
         Change the current rotation axis-plane and re-render.
         rotAxis: the rotation axis-plane as a list of two axes (list, len=2)
-                 all elements are in Cartesian coordinates (list, len=4)
+                 all elements are in spherical coordinates (list, len=3)
         """
         # Button presses have specified rotAxis, manual inputs go through
         if rotAxis == 'xw':
-            rotAxis = [(1,0,0,0),(0,0,0,1)]
+            rotuAxis = (0, pi/2, pi/2)
+            rotvAxis = (0, 0, 0)
         elif rotAxis == 'yw':
-            rotAxis = [(0,1,0,0),(0,0,0,1)]
+            rotuAxis = (pi/2, pi/2, pi/2)
+            rotvAxis = (0, 0, 0)
         elif rotAxis == 'zw':
-            rotAxis = [(0,0,1,0),(0,0,0,1)]
+            rotuAxis = (0, 0, pi/2)
+            rotvAxis = (0, 0, 0)
         elif rotAxis == 'xy':
-            rotAxis = [(1,0,0,0),(0,1,0,0)]
+            rotuAxis = (0, pi/2, pi/2)
+            rotvAxis = (pi/2, pi/2, pi/2)
         elif rotAxis == 'yz':
-            rotAxis = [(0,1,0,0),(0,0,1,0)]
+            rotuAxis = (pi/2, pi/2, pi/2)
+            rotvAxis = (0, 0, pi/2)
         elif rotAxis == 'xz':
-            rotAxis = [(1,0,0,0),(0,0,1,0)]
-        u = [self.rux, self.ruy, self.ruz, self.ruw]
-        v = [self.rvx, self.rvy, self.rvz, self.rvw]
-        for i in range(4):
-            u[i].set('{0:.2f}'.format(rotAxis[0][i]))
-            v[i].set('{0:.2f}'.format(rotAxis[1][i]))
-        self.canvas.set_rotaxes(rotAxis)
+            rotuAxis = (0, pi/2, pi/2)
+            rotvAxis = (0, 0, pi/2)
+        else:
+            rotuAxis = rotAxis[0]
+            rotvAxis = rotAxis[1]
+        rotuAxis = satisfy_axis_restrictions(rotuAxis)
+        rotvAxis = satisfy_axis_restrictions(rotvAxis)
+        u = [self.rutheta, self.ruphi, self.ruomega]
+        v = [self.rvtheta, self.rvphi, self.rvomega]
+        for i in range(3):
+            u[i].set('{0:.2f}'.format(rotuAxis[i]))
+            v[i].set('{0:.2f}'.format(rotvAxis[i]))
+        self.canvas.set_rotaxes((rotuAxis, rotvAxis))
         self.set_status('rot')
         self.canvas.render()
 
@@ -937,18 +947,18 @@ class Main(ttk.Frame):
                 if len(rotAxis) == 2:       # 3D rotation plane, two vectors
                     u = list(map(float, rotAxis[0].split(',')))
                     v = list(map(float, rotAxis[1].split(',')))
-                    if (len(u) != 4 or len(v) != 4):
+                    if (len(u) != 3 or len(v) != 3):
                         hasError = True
                     else:
-                        self.set_rotax((u, v))
+                        self.set_rotax((u,v))
                 elif len(rotAxis) == 1:     # 2D rotation axis, one vector
                     u = list(map(float, rotAxis[0].split(',')))
-                    if len(u) == 3:
-                        u.append(0)         # Cartesian coordinates, add 0
-                    if len(u) != 4:
+                    if len(u) == 2:
+                        u.append(pi/2)      # Spherical coordinates, w = pi/2
+                    if len(u) != 3:
                         hasError = True
-                    else:
-                        self.set_rotax((u, [0,0,0,1]))  # Normal to w-axis
+                    else:                   # Second vector is w-axis (0,0,0)
+                        self.set_rotax((u,(0,0,0)))
                 else:
                     hasError = True
             else:
@@ -1612,17 +1622,17 @@ class Canvas(tk.Canvas):
         Change the current rotation axis-plane of all objects.
         rotAxis: the rotation axis-plane as a list of two axes (list, len=2)
                  default is the previous one, when only _currPolytope changes
-                 all elements are in Cartesian coordinates (list, len=4)
+                 all elements are in spherical coordinates (list, len=3)
         """
         if rotAxis:
             self._currPolytope.set_rotaxis(rotAxis)
             self._sphere.set_rotaxis(rotAxis)
             self._axes.set_rotaxis(rotAxis)
         else:
-            rotAxis = [(self.parent.rux.get(), self.parent.ruy.get(),
-                        self.parent.ruz.get(), self.parent.ruw.get()),
-                       (self.parent.rvx.get(), self.parent.rvy.get(),
-                        self.parent.rvz.get(), self.parent.rvw.get())]
+            rotAxis = [(self.parent.rutheta.get(), self.parent.ruphi.get(),
+                        self.parent.ruomega.get()),
+                       (self.parent.rvtheta.get(), self.parent.rvphi.get(),
+                        self.parent.rvomega.get())]
             self._currPolytope.set_rotaxis(rotAxis)
 
     def set_bar(self, bar):
@@ -1922,10 +1932,11 @@ class Object():
         """
         Set the perpendicular unit axes of rotation of the canvas object.
         axes: the perpendicular unit axes of rotation (list, len=2)
-              all elements are in Cartesian coordinates (list, len=4)
+              all elements are in spherical coordinates (list, len=3)
         """
-        self._axis_i = normalize(axes[0])
-        self._axis_j = normalize(axes[1])
+        # Remember to add in the value for the radius when converting
+        self._axis_i = normalize(convert([1] + list(axes[0]), True))
+        self._axis_j = normalize(convert([1] + list(axes[1]), True))
 
     def rotate(self, rotAngle):
         """
