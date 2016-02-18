@@ -1,17 +1,17 @@
 """
-Polytope Player v0.93
+Polytope Player v0.94
 
 This program lets you play with polytopes!
-All rotation axes are now in spherical coordinates,
-and rux, ruy, ruz, ruw are now rutheta, ruphi, ruomega.
-The scale entries are now disabled along with the scales.
+guiRight is now split into two menus, guiLeft and guiRight.
+Each menu can be collapsed and expanded individually.
+guiBottom is now much tidier too. The entire GUI is!
 """
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
 import random
 
-TITLE = 'Polytope Player v0.93'
+TITLE = 'Polytope Player v0.94'
 DESCRIPTION = '\nThis script lets you play with polytopes.'
 WIDTH = 600
 HEIGHT = 550
@@ -173,10 +173,13 @@ class Main(ttk.Frame):
     Public variables:
     parent              Parent of class (tk.Tk)
     canvas              Instance of Canvas class (Canvas)
-    guiRight            Right collapsable sidebar (ttk.Frame)
+    guiLeft             Left collapsible sidebar (ttk.Frame)
+    guiRight            Right collapsible sidebar (ttk.Frame)
     statusLabel         To allow statusText to clear itself (ttk.Label)
     statusText          To display the current status (tk.StringVar)
     inputText           To display the current input (tk.StringVar)
+    leftText            To display the status of the sidebars (tk.StringVar)
+    rightText
     rotBtns             To allow the buttons to be disabled (list)
     barBtns                 all elements are ttk.Buttons
     viewBtns
@@ -314,36 +317,68 @@ class Main(ttk.Frame):
         style.configure('TCheckbutton', background=COLOURS[4][0])
 
         # Grid main widget frames
-        # Everything else on left, guiRight on right
         # On left: title on top, canvas on middle, guiBottom on bottom
+        # All that on left, self.guiLeft on right, self.guiRight even righter
 
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
-        self.guiRight = ttk.Frame(self)
-        # 10px padding on right but 0px on left since canvas is already padded
-        self.guiRight.grid(row=0, column=1, rowspan=3, padx=(0,10),
-                           pady=20, sticky=tk.N)
         titleLabel = ttk.Label(self, text=TITLE)
         titleLabel.grid(row=0, column=0, pady=10)
         self.canvas = Canvas(self)
         self.canvas.grid(row=1, column=0, padx=10,
                          sticky=tk.N+tk.E+tk.S+tk.W)
+        # 20px padding on bottom but 0px on top since canvas is already padded
         guiBottom = ttk.Frame(self)
         guiBottom.columnconfigure(0, weight=1)
         guiBottom.grid(row=2, column=0, padx=10, pady=(0,20),sticky=tk.E+tk.W)
+        self.guiLeft = ttk.Frame(self)
+        self.guiLeft.grid(row=0, column=1, rowspan=3, pady=20, sticky=tk.N)
+        self.guiRight = ttk.Frame(self)
+        self.guiRight.grid(row=0, column=2, rowspan=3, padx=10, sticky=tk.N)
 
-        # Grid guiRight widgets: 29 rows, 3 columns
+        # Grid guiBottom widgets: 2 rows, 4 columns
+
+        # Grid status label, text box, and link them to statusText, inputText
+        self.statusText = tk.StringVar()
+        self.statusLabel = ttk.Label(
+            guiBottom, textvariable=self.statusText, foreground=COLOURS[4][2])
+        self.statusLabel.grid(row=0, column=0, columnspan=4, sticky=tk.W)
+        self.inputText = tk.StringVar()
+        inputBox = ttk.Entry(guiBottom, textvariable=self.inputText)
+        inputBox.bind('<Key-Return>', self.take_input)
+        inputBox.grid(row=1, column=0, columnspan=4, sticky=tk.E+tk.W)
+        inputBox.focus()    # Put initial keyboard focus on inputBox
+
+        # Grid reset and collapse buttons
+        resetBtn = ttk.Button(guiBottom, text='Reset',
+                              command=lambda: self.change('r'))
+        resetBtn.bind('<Key-Return>', lambda event: self.change('r'))
+        resetBtn.grid(row=0, column=1, sticky=tk.E)
+        self.leftText = tk.StringVar()
+        self.leftText.set('Collapse Left Sidebar >>')
+        leftBtn = ttk.Button(guiBottom, textvariable=self.leftText,
+                             command=lambda: self._collapse('left'))
+        leftBtn.bind('<Key-Return>', lambda event: self._collapse('left'))
+        leftBtn.grid(row=0, column=2)
+        self.rightText = tk.StringVar()
+        self.rightText.set('Collapse Right Sidebar >>')
+        rightBtn = ttk.Button(guiBottom, textvariable=self.rightText,
+                              command=lambda: self._collapse('right'))
+        rightBtn.bind('<Key-Return>', lambda event: self._collapse('right'))
+        rightBtn.grid(row=0, column=3)
+
+        # Grid guiLeft widgets: 21 rows, 3 columns
 
         # Grid rotate label, 2 rotate buttons, and 6 rotation axis buttons
-        rotateLabel = ttk.Label(self.guiRight, text='Rotate:')
+        rotateLabel = ttk.Label(self.guiLeft, text='Rotate:')
         rotateLabel.grid(row=0, column=0, columnspan=3)
-        leftRotBtn = ttk.Button(self.guiRight, image=self._leftBtn,
+        leftRotBtn = ttk.Button(self.guiLeft, image=self._leftBtn,
                                 command=lambda: self.canvas.rotate(0))
         leftRotBtn.bind('<Button-1>', lambda event: self._mouse_down('r0'))
         leftRotBtn.bind('<ButtonRelease-1>', self._mouse_up)
         leftRotBtn.bind('<Key-Return>', lambda event: self.canvas.rotate(0))
         leftRotBtn.grid(row=1, column=0, columnspan=2, sticky=tk.W)
-        rightRotBtn = ttk.Button(self.guiRight, image=self._rightBtn,
+        rightRotBtn = ttk.Button(self.guiLeft, image=self._rightBtn,
                                  command=lambda: self.canvas.rotate(1))
         rightRotBtn.bind('<Button-1>', lambda event: self._mouse_down('r1'))
         rightRotBtn.bind('<ButtonRelease-1>', self._mouse_up)
@@ -354,70 +389,128 @@ class Main(ttk.Frame):
         self.rotBtns = ['xw', 'yw', 'zw', 'xy', 'yz', 'xz']
         for i,t in enumerate(self.rotBtns):
             # Use default variable to ensure lambdas have different arguments
-            b = ttk.Button(self.guiRight, text=t, width=5,
+            b = ttk.Button(self.guiLeft, text=t, width=5,
                            command=lambda t=t: self.set_rotax(t))
             b.bind('<Key-Return>', lambda event,t=t: self.set_rotax(t))
             b.grid(row=int(2+i/3), column=i%3)
             self.rotBtns[i] = b     # Replace text with actual buttons
 
         # Grid Wythoff label and 9 Wythoff bar buttons
-        wythoffLabel = ttk.Label(self.guiRight, text='Wythoff:')
+        wythoffLabel = ttk.Label(self.guiLeft, text='Wythoff:')
         wythoffLabel.grid(row=4, column=0, columnspan=3, pady=(20,0))
         self.barBtns = [('(pqs)', 'a'), ('(|pqs)', 'b'), ('(pqs|)', 'c'),
                         ('(p|qs)', 'p'), ('(q|sp)', 'q'), ('(s|pq)', 's'),
                         ('(pq|s)', 'pq'), ('(qs|p)', 'qs'), ('(sq|q)', 'sp')]
         for i,(t,c) in enumerate(self.barBtns):
-            b = ttk.Button(self.guiRight, text=t, width=5,
+            b = ttk.Button(self.guiLeft, text=t, width=5,
                            command=lambda c=c: self.canvas.set_bar(c))
             b.bind('<Key-Return>', lambda event,c=c: self.canvas.set_bar(c))
             b.grid(row=int(5+i/3), column=i%3)
             self.barBtns[i] = b
 
+        # Grid view label and 4 view axis buttons
+        viewLabel = ttk.Label(self.guiLeft, text='Views:')
+        viewLabel.grid(row=9, column=0, rowspan=2, pady=(20,0))
+        self.viewBtns = [('x', [0, pi/2, pi/2]), ('y', [0, pi/2, pi/2]),
+                         ('z', [0, 0, pi/2]), ('w', [0, 0, 0])]
+        for i,(t,c) in enumerate(self.viewBtns):
+            b = ttk.Button(self.guiLeft, text=t, width=5,
+                           command=lambda c=c: self.set_view(c))
+            b.bind('<Key-Return>', lambda event,c=c: self.set_view(c))
+            if i < 2:
+                b.grid(row=9, column=1+i%2, pady=(20,0))
+            else:
+                b.grid(row=10, column=1+i%2)
+            self.viewBtns[i] = b
+
         # Grid light axis and intensity labels, scales, and displays
-        lightLabel = ttk.Label(self.guiRight, text='Light Properties:')
-        lightLabel.grid(row=9, column=0, columnspan=3, pady=(20,0))
+        lightLabel = ttk.Label(self.guiLeft, text='Light Properties:')
+        lightLabel.grid(row=11, column=0, columnspan=3, pady=(20,0))
         self.lint = tk.DoubleVar()
         self.ltheta = tk.DoubleVar()
         self.lphi = tk.DoubleVar()
         lightWidgets = [('cd', self.lint, 2), ('θ', self.ltheta, 6.28),
                         ('φ', self.lphi, 3.14)]     # t = text, v = variable
         for i,(t,v,o) in enumerate(lightWidgets):   # o = maximum value (to)
-            l = ttk.Label(self.guiRight, text=t)
-            l.grid(row=10, column=i)
-            d = ttk.Entry(self.guiRight, textvariable=v, width=4,
+            l = ttk.Label(self.guiLeft, text=t)
+            l.grid(row=12, column=i)
+            d = ttk.Entry(self.guiLeft, textvariable=v, width=4,
                           validate='key', validatecommand=(self.register(
                           self._valid), '%P', o, 'float'))
             d.bind('<Key-Return>', lambda event: self.change('s'))
-            d.grid(row=11, column=i)
-            s = ttk.Scale(self.guiRight, orient=tk.VERTICAL, from_=0, to=o,
-                          length=70,
+            d.grid(row=13, column=i)
+            s = ttk.Scale(self.guiLeft, orient=tk.VERTICAL, from_=0, to=o,
                           variable=v, command=lambda event: self.change('s'))
-            s.grid(row=12, column=i)
+            s.grid(row=14, column=i)
 
         # Grid light colours labels, scales, and displays
-        colourLabel = ttk.Label(self.guiRight, text='Light Colours:')
-        colourLabel.grid(row=13, column=0, columnspan=3, pady=(20,0))
+        colourLabel = ttk.Label(self.guiLeft, text='Light Colours:')
+        colourLabel.grid(row=15, column=0, columnspan=3, pady=(20,0))
         self.lred = tk.DoubleVar()
         self.lgreen = tk.DoubleVar()
         self.lblue = tk.DoubleVar()
         colourWidgets = [('Red', self.lred, 255), ('Green', self.lgreen, 255),
                          ('Blue', self.lblue, 255)]
         for i,(t,v,o) in enumerate(colourWidgets):
-            l = ttk.Label(self.guiRight, text=t)
-            l.grid(row=14, column=i)
-            d = ttk.Entry(self.guiRight, textvariable=v, width=4,
+            l = ttk.Label(self.guiLeft, text=t)
+            l.grid(row=16, column=i)
+            d = ttk.Entry(self.guiLeft, textvariable=v, width=4,
                           validate='key', validatecommand=(self.register(
                           self._valid), '%P', o, 'int'))
             d.bind('<Key-Return>', lambda event: self.change('s'))
-            d.grid(row=15, column=i)
-            s = ttk.Scale(self.guiRight, orient=tk.VERTICAL, from_=0, to=o,
-                          length=70,
+            d.grid(row=17, column=i)
+            s = ttk.Scale(self.guiLeft, orient=tk.VERTICAL, from_=0, to=o,
                           variable=v, command=lambda event: self.change('s'))
-            s.grid(row=16, column=i)
+            s.grid(row=18, column=i)
+
+        # Grid distance label, display, and buttons
+        distLabel = ttk.Label(self.guiLeft, text='Camera Distance:')
+        distLabel.grid(row=19, column=0, columnspan=3, pady=(20,0))
+        self.dist = tk.IntVar()
+        dUpBtn = ttk.Button(self.guiLeft, image=self._upBtn,
+                            command=lambda: self.change('d+'))
+        dUpBtn.bind('<Button-1>', lambda event: self._mouse_down('d+'))
+        dUpBtn.bind('<ButtonRelease-1>', self._mouse_up)
+        dUpBtn.bind('<Key-Return>', lambda event: self.change('d+'))
+        dUpBtn.grid(row=20, column=0)
+        distDisplay = ttk.Label(self.guiLeft, textvariable=self.dist)
+        distDisplay.grid(row=20, column=1)
+        dDownBtn = ttk.Button(self.guiLeft, image=self._downBtn,
+                              command=lambda: self.change('d-'))
+        dDownBtn.bind('<Button-1>', lambda event: self._mouse_down('d-'))
+        dDownBtn.bind('<ButtonRelease-1>', self._mouse_up)
+        dDownBtn.bind('<Key-Return>', lambda event: self.change('d-'))
+        dDownBtn.grid(row=20, column=2)
+
+        # Grid guiRight widgets: 20 rows, 3 columns
+
+        # Grid options label and 4 checkbuttons for toggling BooleanVars
+        optionsLabel = ttk.Label(self.guiRight, text='Options:')
+        optionsLabel.grid(row=0, column=0, columnspan=3, pady=(20,0))
+        self.sphere = tk.BooleanVar()
+        sphereCheck = ttk.Checkbutton(self.guiRight, text='Sphere',
+                                      variable=self.sphere,
+                                      command=lambda: self.change())
+        sphereCheck.grid(row=1, column=0, columnspan=3, sticky=tk.W)
+        self.axes = tk.BooleanVar()
+        axesCheck = ttk.Checkbutton(self.guiRight, text='Axes',
+                                    variable=self.axes,
+                                    command=lambda: self.change())
+        axesCheck.grid(row=2, column=0, columnspan=3, sticky=tk.W)
+        self.wire = tk.BooleanVar()
+        self.wireCheck = ttk.Checkbutton(self.guiRight, text='Wireframe',
+                                         variable=self.wire,
+                                         command=lambda: self.change())
+        self.wireCheck.grid(row=3, column=0, columnspan=3, sticky=tk.W)
+        self.only3D = tk.BooleanVar()
+        only3DCheck = ttk.Checkbutton(self.guiRight, text='Only 3D Mode',
+                                      variable=self.only3D,
+                                      command=lambda: self.change('3'))
+        only3DCheck.grid(row=4, column=0, columnspan=3, sticky=tk.W)
 
         # Grid view axis labels, scales, and displays
         viewLabel = ttk.Label(self.guiRight, text='Camera Direction:')
-        viewLabel.grid(row=17, column=0, columnspan=3, pady=(20,0))
+        viewLabel.grid(row=5, column=0, columnspan=3, pady=(29,0))
         self.vtheta = tk.DoubleVar()
         self.vphi = tk.DoubleVar()
         self.vomega = tk.DoubleVar()
@@ -426,22 +519,23 @@ class Main(ttk.Frame):
         self.viewEntries = []
         for i,(t,v,o) in enumerate(self.viewWidgets):
             l = ttk.Label(self.guiRight, text=t)
-            l.grid(row=18, column=i)
+            l.grid(row=6, column=i)
             d = ttk.Entry(self.guiRight, textvariable=v, width=4,
                           validate='key', validatecommand=(self.register(
                           self._valid), '%P', o, 'float'))
             d.bind('<Key-Return>', lambda event: self.change('s'))
-            d.grid(row=19, column=i)
+            d.grid(row=7, column=i)
             s = ttk.Scale(self.guiRight, orient=tk.VERTICAL, from_=0, to=o,
-                          length=70,
                           variable=v, command=lambda event: self.change('s'))
-            s.grid(row=20, column=i)
+            s.grid(row=8, column=i)
             self.viewWidgets[i] = s
             self.viewEntries.append(d)
 
         # Grid rotation axis-plane labels, scales, and displays
-        rotuLabel = ttk.Label(self.guiRight, text='Rotation axis:')
-        rotuLabel.grid(row=21, column=0, columnspan=3, pady=(20,0))
+        rotLabel = ttk.Label(self.guiRight, text='Rotation Axis-Plane:')
+        rotLabel.grid(row=9, column=0, columnspan=3, pady=(20,5))
+        rotuLabel = ttk.Label(self.guiRight, text='First Axis Basis:')
+        rotuLabel.grid(row=10, column=0, columnspan=3)
         self.rutheta = tk.DoubleVar()
         self.ruphi = tk.DoubleVar()
         self.ruomega = tk.DoubleVar()
@@ -450,22 +544,21 @@ class Main(ttk.Frame):
         self.rotuEntries = []
         for i,(t,v,o) in enumerate(self.rotuWidgets):
             l = ttk.Label(self.guiRight, text=t)
-            l.grid(row=22, column=i)
+            l.grid(row=11, column=i)
             d = ttk.Entry(self.guiRight, textvariable=v, width=4,
                           validate='key', validatecommand=(self.register(
                           self._valid), '%P', o, 'float'))
             d.bind('<Key-Return>', lambda event: self.change('s'))
-            d.grid(row=23, column=i)
+            d.grid(row=12, column=i)
             s = ttk.Scale(self.guiRight, orient=tk.VERTICAL, from_=0, to=o,
-                          length=70,
                           variable=v, command=lambda event: self.change('s'))
-            s.grid(row=24, column=i)
+            s.grid(row=13, column=i)
             self.rotuWidgets[i] = s
             self.rotuEntries.append(d)
 
         # Grid rotation axis-plane labels, scales, and displays
-        rotvLabel = ttk.Label(self.guiRight, text='Second rotation axis:')
-        rotvLabel.grid(row=25, column=0, columnspan=3, pady=(20,0))
+        rotvLabel = ttk.Label(self.guiRight, text='Second Axis Basis:')
+        rotvLabel.grid(row=14, column=0, columnspan=3, pady=(20,0))
         self.rvtheta = tk.DoubleVar()
         self.rvphi = tk.DoubleVar()
         self.rvomega = tk.DoubleVar()
@@ -474,113 +567,56 @@ class Main(ttk.Frame):
         self.rotvEntries = []
         for i,(t,v,o) in enumerate(self.rotvWidgets):
             l = ttk.Label(self.guiRight, text=t)
-            l.grid(row=26, column=i)
+            l.grid(row=15, column=i)
             d = ttk.Entry(self.guiRight, textvariable=v, width=4,
                           validate='key', validatecommand=(self.register(
                           self._valid), '%P', o, 'float'))
             d.bind('<Key-Return>', lambda event: self.change('s'))
-            d.grid(row=27, column=i)
+            d.grid(row=16, column=i)
             s = ttk.Scale(self.guiRight, orient=tk.VERTICAL, from_=0, to=o,
-                          length=70,
                           variable=v, command=lambda event: self.change('s'))
-            s.grid(row=28, column=i)
+            s.grid(row=17, column=i)
             self.rotvWidgets[i] = s
             self.rotvEntries.append(d)
 
-        # Grid guiBottom widgets: 6 rows, 7 columns
-
-        # Grid status label, text box, and link them to statusText, inputText
-        self.statusText = tk.StringVar()
-        self.statusLabel = ttk.Label(
-            guiBottom, textvariable=self.statusText, foreground=COLOURS[4][2])
-        self.statusLabel.grid(row=0, column=0, columnspan=7, sticky=tk.W)
-        self.inputText = tk.StringVar()
-        inputBox = ttk.Entry(guiBottom, textvariable=self.inputText)
-        inputBox.bind('<Key-Return>', self.take_input)
-        inputBox.grid(row=1, column=0, columnspan=7, sticky=tk.E+tk.W)
-        inputBox.focus()    # Put initial keyboard focus on inputBox
-
-        # Grid 4 checkbuttons for toggling BooleanVars
-        self.sphere = tk.BooleanVar()
-        sphereCheck = ttk.Checkbutton(guiBottom, text='Sphere',
-                                      variable=self.sphere,
-                                      command=lambda: self.change())
-        sphereCheck.grid(row=2, column=0, sticky=tk.W)
-        self.axes = tk.BooleanVar()
-        axesCheck = ttk.Checkbutton(guiBottom, text='Axes',
-                                    variable=self.axes,
-                                    command=lambda: self.change())
-        axesCheck.grid(row=3, column=0, sticky=tk.W)
-        self.wire = tk.BooleanVar()
-        self.wireCheck = ttk.Checkbutton(guiBottom, text='Wireframe',
-                                         variable=self.wire,
-                                         command=lambda: self.change())
-        self.wireCheck.grid(row=4, column=0, sticky=tk.W)
-        self.only3D = tk.BooleanVar()
-        only3DCheck = ttk.Checkbutton(guiBottom, text='Only 3D Mode',
-                                      variable=self.only3D,
-                                      command=lambda: self.change('3'))
-        only3DCheck.grid(row=5, column=0, sticky=tk.W)
-
-        # Grid view label and 4 view axis buttons
-        viewLabel = ttk.Label(guiBottom, text='Views:')
-        viewLabel.grid(row=2, column=1, columnspan=2, sticky=tk.E)
-        self.viewBtns = [('x', [0, pi/2, pi/2]), ('y', [0, pi/2, pi/2]),
-                         ('z', [0, 0, pi/2]), ('w', [0, 0, 0])]
-        for i,(t,c) in enumerate(self.viewBtns):
-            b = ttk.Button(guiBottom, text=t, width=2,
-                           command=lambda c=c: self.set_view(c))
-            b.bind('<Key-Return>', lambda event,c=c: self.set_view(c))
-            b.grid(row=2, column=3+i)
-            self.viewBtns[i] = b
-
-        # Grid zoom label, distance label, and 4 zoom/dist buttons
-        zoomLabel = ttk.Label(guiBottom, text='zoom:')
-        zoomLabel.grid(row=3, column=1, sticky=tk.E)
-        distLabel = ttk.Label(guiBottom, text='d:')
-        distLabel.grid(row=3, column=4, sticky=tk.E)
-        upDownBtns = ['z+', 'z-', 'd+', 'd-']
-        for i,c in enumerate(upDownBtns):
-            if i%2 == 0:    # Even indexes are up buttons
-                im = self._upBtn
-            else:
-                im = self._downBtn
-            b = ttk.Button(guiBottom, image=im,
-                           command=lambda c=c: self.change(c))
-            b.bind('<Button-1>', lambda event,c=c: self._mouse_down(c))
-            b.bind('<ButtonRelease-1>', self._mouse_up)
-            b.bind('<Key-Return>', lambda event,c=c: self.change(c))
-            b.grid(row=3, column=2+i+int(i/2))  # Gap to put distLabel
-
-        # Grid zoom display, distance display, and link them to zoom, dist
+        # Grid zoom label, display, and buttons
+        zoomLabel = ttk.Label(self.guiRight, text='Camera Zoom:')
+        zoomLabel.grid(row=18, column=0, columnspan=3, pady=(20,0))
         self.zoom = tk.IntVar()
-        zoomDisplay = ttk.Label(guiBottom, textvariable=self.zoom)
-        zoomDisplay.grid(row=4, column=1, columnspan=3, sticky=tk.E)
-        self.dist = tk.IntVar()
-        distDisplay = ttk.Label(guiBottom, textvariable=self.dist)
-        distDisplay.grid(row=4, column=4, columnspan=3, sticky=tk.E)
-        # Make fifth row same height as previous rows that have button icons
-        guiBottom.rowconfigure(4,minsize=28)
-
-        # Grid collapse button
-        self.collapseText = tk.StringVar()
-        self.collapseText.set('Collapse Sidebar >>')
-        self.collapseBtn = ttk.Button(guiBottom, command=self._collapse,
-                                      textvariable=self.collapseText)
-        self.collapseBtn.bind('<Key-Return>', self._collapse)
-        self.collapseBtn.grid(row=5, column=1, columnspan=6, sticky=tk.E)
+        zUpBtn = ttk.Button(self.guiRight, image=self._upBtn,
+                            command=lambda: self.change('z+'))
+        zUpBtn.bind('<Button-1>', lambda event: self._mouse_down('z+'))
+        zUpBtn.bind('<ButtonRelease-1>', self._mouse_up)
+        zUpBtn.bind('<Key-Return>', lambda event: self.change('z+'))
+        zUpBtn.grid(row=19, column=0)
+        zoomDisplay = ttk.Label(self.guiRight, textvariable=self.zoom)
+        zoomDisplay.grid(row=19, column=1)
+        zDownBtn = ttk.Button(self.guiRight, image=self._downBtn,
+                              command=lambda: self.change('z-'))
+        zDownBtn.bind('<Button-1>', lambda event: self._mouse_down('z-'))
+        zDownBtn.bind('<ButtonRelease-1>', self._mouse_up)
+        zDownBtn.bind('<Key-Return>', lambda event: self.change('z-'))
+        zDownBtn.grid(row=19, column=2)
 
         self.change('r')    # Initialize all properties with default values
-        self.set_status('clear')
 
-    def _collapse(self):
-        # Collapse the right sidebar.
-        if self.collapseText.get() == 'Collapse Sidebar >>':
-            self.collapseText.set('Show Sidebar <<')
-            self.guiRight.grid_remove()
-        elif self.collapseText.get() == 'Show Sidebar <<':
-            self.collapseText.set('Collapse Sidebar >>')
-            self.guiRight.grid()
+    def _collapse(self, sidebar):
+        # Collapse the sidebars.
+        # sidebar: which sidebar to collapse, 'left' or 'right' (str)
+        if sidebar == 'left':
+            if self.leftText.get() == 'Collapse Left Sidebar >>':
+                self.leftText.set('Show Left Sidebar <<')
+                self.guiLeft.grid_remove()
+            elif self.leftText.get() == 'Show Left Sidebar <<':
+                self.leftText.set('Collapse Left Sidebar >>')
+                self.guiLeft.grid()
+        elif sidebar == 'right':
+            if self.rightText.get() == 'Collapse Right Sidebar >>':
+                self.rightText.set('Show Right Sidebar <<')
+                self.guiRight.grid_remove()
+            elif self.rightText.get() == 'Show Right Sidebar <<':
+                self.rightText.set('Collapse Right Sidebar >>')
+                self.guiRight.grid()
 
     def _valid(self, entry, to, numType):
         # Ensure that scale entry inputs are valid.
@@ -746,7 +782,7 @@ class Main(ttk.Frame):
                             (self.lred, self.lgreen, self.lblue)])
             self.set_rotax([[s.get() for s in
                              (self.rutheta, self.ruphi, self.ruomega)],
-                            [s.get() for s in 
+                            [s.get() for s in
                              (self.rvtheta, self.rvphi, self.rvomega)]])
             self.set_status('')     # Don't set any status
 
@@ -777,6 +813,7 @@ class Main(ttk.Frame):
                 self.only3D.set(True)
                 self.change('3')    # Set 3D mode to True
                 self.change('y', 0) # Not a Wythoff
+                self.set_status('clear')
             except:
                 return
 
@@ -896,7 +933,6 @@ class Main(ttk.Frame):
         try:    # If anything fails, catch the error and set hasError to 1
             if entry in ['', 'clear', 'reset']:         # Clear canvas
                 self.change('r')
-                self.set_status('clear')
             elif entry in ['quit', 'exit', 'close']:    # Close program
                 self.close()
 
@@ -2506,8 +2542,8 @@ class Axes(Object):
 
 root = tk.Tk()
 main = Main(root)
-root.bind('<Up>', lambda event: main.change('z+'))
-root.bind('<Down>', lambda event: main.change('z-'))
+root.bind('<Up>', lambda event: main.change('d-'))
+root.bind('<Down>', lambda event: main.change('d+'))
 root.bind('<Left>', lambda event: main.canvas.rotate(0))
 root.bind('<Right>', lambda event: main.canvas.rotate(1))
 root.mainloop()
