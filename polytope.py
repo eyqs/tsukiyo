@@ -1,17 +1,16 @@
 """
-Polytope Player v0.94
+Polytope Player v0.95
 
 This program lets you play with polytopes!
-guiRight is now split into two menus, guiLeft and guiRight.
-Each menu can be collapsed and expanded individually.
-guiBottom is now much tidier too. The entire GUI is!
+The colours of points, lines, faces, and axes can now be changed.
+The colours of menus and widgets can sorta be, like half-changed.
 """
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
 import random
 
-TITLE = 'Polytope Player v0.94'
+TITLE = 'Polytope Player v0.95'
 DESCRIPTION = '\nThis script lets you play with polytopes.'
 WIDTH = 600
 HEIGHT = 550
@@ -36,12 +35,6 @@ POLYGONS = {0:'notgon', 1:'monogon', 2:'digon', # Polygon names
             7:'heptagon', 8:'octagon', 9:'nonagon', 10:'decagon',
             13:'triangle', 14:'line', 15:'pentagram', 16:'hexagram',
             17:'heptagram', 18:'octagram', 19:'nonagram', 20:'decagram'}
-COLOURS = [('#000', '#F00', '#00F'),    # Temporary hardcoded constant colours
-           ('#EEE', '#BBB', '#999', '#666', '#333', '#000'),
-           {3:'#719',4:'#1B1',5:'#04D',6:'#F8C',7:'#630',8:'#E00',9:'#9DF',
-           10:'#098', 11:'#F70', 12:'#9F7', 13:'#C07', 14:'#FF1', 15:'#7BF',
-           16:'#999', 17:'#8F0', 18:'#B7F', 19:'#90E', 20:'#030', 21:'#0CA'},
-           ('#FD9', '#F00', '#0F0', '#00F', '#F90'), ('#CCC', '#FFF', '#F00')]
 
 
 
@@ -172,6 +165,7 @@ class Main(ttk.Frame):
 
     Public variables:
     parent              Parent of class (tk.Tk)
+    colours             To change the colours of the program (list)
     canvas              Instance of Canvas class (Canvas)
     guiLeft             Left collapsible sidebar (ttk.Frame)
     guiRight            Right collapsible sidebar (ttk.Frame)
@@ -208,6 +202,7 @@ class Main(ttk.Frame):
     __init__            Construct Main class.
     _make_menus         Initialize dropdown menus.
     _make_popups        Create the actual pop-up windows.
+    _set_style          Set consistent background colours.
     _initUI             Initialize GUI placement and bind buttons.
     _collapse           Collapse the right sidebar.
     _valid              Ensure that scale entry inputs are valid.
@@ -217,6 +212,9 @@ class Main(ttk.Frame):
     _press
 
     Private variables:
+    _style              To allow background colours to be changed (ttk.Style)
+    _menuBar
+    _fileMenu
     _mousePressed       To keep track of when mouse is pressed down (bool)
     _leftBtn            To avoid garbage collection (tk.PhotoImage)
     _rightBtn
@@ -230,6 +228,16 @@ class Main(ttk.Frame):
         Construct Main class.
         parent: the parent of main (tk.Tk)
         """
+        self.cols = {
+            'points': ['#000', '#F00', '#00F'], # One for each triangle vertex
+            'lines': {'sphere': '#666', 'face': '#000'},
+            'faces':
+                {3:'#719', 4:'#1B1', 5:'#04D', 6:'#F8C', 7:'#630', 8:'#E00',
+                 9:'#9DF', 10:'#098', 11:'#F70', 12:'#9F7',     # Convex polys
+                 13:'#C07', 14:'#FF1', 15:'#7BF', 16:'#999', 17:'#8F0',
+                 18:'#B7F', 19:'#90E', 20:'#030', 21:'#0CA'},   # Star polygons
+            'axes': ['#F00', '#0F0', '#00F', '#F90'],   # One for each axis
+            'menus': {'bg': '#CCC', 'blank': '#FFF', 'info': '#F00'}}
         self._mousePressed = False
         self.parent = parent
         self.parent.title(TITLE)
@@ -246,17 +254,17 @@ class Main(ttk.Frame):
 
     def _make_menus(self):
         # Initialize dropdown menus.
-        menuBar = tk.Menu(self.parent)
-        self.parent.config(menu=menuBar)
-        fileMenu = tk.Menu(menuBar)
+        self._menuBar = tk.Menu(self.parent)
+        self.parent.config(menu=self._menuBar)
+        self._fileMenu = tk.Menu(self._menuBar)
         # underline sets position of keyboard shortcut
-        fileMenu.add_command(label='About', underline=0,
-                             command=lambda: self._make_popups('About'))
-        fileMenu.add_command(label='Help', underline=0,
-                             command=lambda: self._make_popups('Help'))
-        fileMenu.add_command(label='Exit', underline=1,
-                             command=self.close)
-        menuBar.add_cascade(label='File', menu=fileMenu, underline=0)
+        self._fileMenu.add_command(label='About', underline=0,
+                                   command=lambda: self._make_popups('About'))
+        self._fileMenu.add_command(label='Help', underline=0,
+                                   command=lambda: self._make_popups('Help'))
+        self._fileMenu.add_command(label='Exit', underline=1,
+                                   command=self.close)
+        self._menuBar.add_cascade(label='File', menu=self._fileMenu, underline=0)
 
     def _make_popups(self, popUpType):
         # Create the actual pop-up windows.
@@ -278,10 +286,11 @@ class Main(ttk.Frame):
             frameHeight = 120
 
         # Create pop-up window, each with title, message, and close button
-        popUpFrame = tk.Toplevel(self.parent, background=COLOURS[4][0])
+        popUpFrame = tk.Toplevel(self.parent,
+                                 background=self.cols['menus']['bg'])
         popUpFrame.title(titleText)
-        popUpMessage = tk.Message(popUpFrame, text=messageText,
-                                  width=frameWidth, background=COLOURS[4][0])
+        popUpMessage = tk.Message(popUpFrame,text=messageText,width=frameWidth,
+                                  background=self.cols['menus']['bg'])
         popUpMessage.pack()
         popUpButton = ttk.Button(popUpFrame, text=buttonText,
                                  command=popUpFrame.destroy)
@@ -300,21 +309,30 @@ class Main(ttk.Frame):
         popUpButton.focus()
         self.wait_window(popUpFrame)
 
+    def _set_style(self, style):
+        # Set consistent background colour to all widgets
+        # style: the style settings (ttk.Style)
+        style.configure('TFrame', background=self.cols['menus']['bg'])
+        style.configure('TLabel', background=self.cols['menus']['bg'])
+        style.configure('TButton', background=self.cols['menus']['bg'])
+        style.configure('TCheckbutton', background=self.cols['menus']['bg'])
+        style.configure('TScale', background=self.cols['menus']['bg'])
+        # Configure non-ttk widgets too
+        self._menuBar.configure(bg = self.cols['menus']['bg'])
+        self._fileMenu.configure(bg = self.cols['menus']['bg'])
+
     def _initUI(self):
         # Initialize GUI placement and bind buttons.
 
         # Must keep references to avoid garbage-collection
+        # Set consistent background colour to all ttk widgets
+        self._style = ttk.Style()
+        self._set_style(self._style)
+
         self._leftBtn = tk.PhotoImage(file='leftButtonTwentyFour.gif')
         self._rightBtn = tk.PhotoImage(file='rightButtonTwentyFour.gif')
         self._upBtn = tk.PhotoImage(file='upButtonEleven.gif')
         self._downBtn = tk.PhotoImage(file='downButtonEleven.gif')
-
-        # Set consistent background colour to all ttk widgets
-        style = ttk.Style()
-        style.configure('TFrame', background=COLOURS[4][0])
-        style.configure('TLabel', background=COLOURS[4][0])
-        style.configure('TButton', background=COLOURS[4][0])
-        style.configure('TCheckbutton', background=COLOURS[4][0])
 
         # Grid main widget frames
         # On left: title on top, canvas on middle, guiBottom on bottom
@@ -340,8 +358,8 @@ class Main(ttk.Frame):
 
         # Grid status label, text box, and link them to statusText, inputText
         self.statusText = tk.StringVar()
-        self.statusLabel = ttk.Label(
-            guiBottom, textvariable=self.statusText, foreground=COLOURS[4][2])
+        self.statusLabel = ttk.Label(guiBottom, textvariable=self.statusText,
+                                     foreground=self.cols['menus']['info'])
         self.statusLabel.grid(row=0, column=0, columnspan=4, sticky=tk.W)
         self.inputText = tk.StringVar()
         inputBox = ttk.Entry(guiBottom, textvariable=self.inputText)
@@ -926,6 +944,7 @@ class Main(ttk.Frame):
                zoom/dist/view: 'z0', 'd0', 'v0,0', 'v0,0,0'
                light: 'la0,0', 'la0,0,0', 'lc1,1,1', 'li0'
                rotaxis: 'r0,0,0', 'r0,0,0,0/0,0,0,0'
+               colours: 'cp1#000', 'cf01#000', 'ca1#000', 'cb#000', 'cc#000'
         """
         hasError = False
         entry = self.inputText.get()
@@ -997,6 +1016,23 @@ class Main(ttk.Frame):
                         self.set_rotax((u,(0,0,0)))
                 else:
                     hasError = True
+
+            elif entry.startswith('c'):                 # Change colours
+                if entry.startswith('cp'):
+                    self.cols['points'][int(entry[2])] = entry[3:]
+                elif entry.startswith('cf'):
+                    self.cols['faces'][int(entry[2:4])] = entry[4:]
+                elif entry.startswith('ca'):
+                    self.cols['axes'][int(entry[2])] = entry[3:]
+                elif entry.startswith('cb'):
+                    self.cols['menus']['bg'] = entry[2:]
+                elif entry.startswith('cc'):
+                    self.cols['menus']['blank'] = entry[2:]
+                else:
+                    hasError = True
+                self._set_style(self._style)
+                self.canvas.render()
+
             else:
                 self.canvas.make_polytope(entry)
                 self.set_status('faces')
@@ -1622,7 +1658,7 @@ class Canvas(tk.Canvas):
         """
         self.parent = parent
         tk.Canvas.__init__(self, parent, relief=tk.GROOVE,
-                           background=COLOURS[4][1],
+                           background=self.parent.cols['menus']['blank'],
                            borderwidth=5, width=300, height=200)
         self._currPolytope = Polytope([])
         self._sphere = Sphere(SPHERENUM, RADIUS)
@@ -1820,8 +1856,8 @@ class Canvas(tk.Canvas):
                       self._view(self._sphere.get_points(), viewAxis)]
             edges = self._sphere.get_edges()
             for edge in edges:
-                self.create_line(points[edge[0]], points[edge[1]],
-                                 fill=COLOURS[1][3], width=3)
+                self.create_line(points[edge[0]], points[edge[1]], width=3,
+                                 fill=self.parent.cols['lines']['sphere'])
 
         # Draw the coordinate axes
         if w != 0 and h != 0 and self.parent.axes.get() == True:
@@ -1833,7 +1869,7 @@ class Canvas(tk.Canvas):
             edges = self._axes.get_edges()
             for i,edge in enumerate(edges):
                 self.create_line(points[edge[0]], points[edge[1]],
-                                 fill=COLOURS[3][i+1], width=5)
+                                 fill=self.parent.cols['axes'][i], width=5)
 
         if not self._currPolytope.get_points():
             return      # Do nothing if the polytope is empty
@@ -1854,8 +1890,8 @@ class Canvas(tk.Canvas):
 
             # If the polytope is a single polygon, both sides should be shaded
             if len(faces) == 1:
-                hexcol = COLOURS[2][sideTypes[0]]   # Get polygon base colour
-                colour = []
+                colour = []                         # Get polygon base colour
+                hexcol = self.parent.cols['faces'][sideTypes[0]]
                 for i in range(3):
                     deccol = int(hexcol[1+i], 16)   # Convert hex to dec
                     # Multiply deccol (0-15) by 16, since lcol is (0-255)
@@ -1866,8 +1902,8 @@ class Canvas(tk.Canvas):
                     colour.append(int(min(255, abs(col))))
                 rgb = '#{0:02x}{1:02x}{2:02x}'.format(*colour)
                 edges = [points[side] for side in faces[0]]
-                self.create_polygon(edges,outline=COLOURS[1][5],
-                                    width=3,fill=rgb)
+                self.create_polygon(edges,width=3,fill=rgb,
+                                    outline=self.parent.cols['lines']['face'])
                 return
 
             # Otherwise, sort faces by distance to the camera and draw them
@@ -1875,7 +1911,7 @@ class Canvas(tk.Canvas):
                 distances[face] = distance2(centres[face], camera)
             order = sorted(distances, key=distances.get, reverse=True)
             for face in order:              # Colour the faces
-                hexcol = COLOURS[2][sideTypes[face]]
+                hexcol = self.parent.cols['faces'][sideTypes[face]]
                 colour = []
                 for i in range(3):
                     deccol = int(hexcol[1+i], 16)
@@ -1883,8 +1919,8 @@ class Canvas(tk.Canvas):
                     colour.append(int(max(0, min(255, col))))
                 rgb = '#{0:02x}{1:02x}{2:02x}'.format(*colour)
                 edges = [points[side] for side in faces[face]]
-                self.create_polygon(edges,outline=COLOURS[1][5],
-                                    width=3,fill=rgb)
+                self.create_polygon(edges,width=3,fill=rgb,
+                                    outline=self.parent.cols['lines']['face'])
             return
 
         # Display by drawing lines in wireframe mode
@@ -1895,7 +1931,7 @@ class Canvas(tk.Canvas):
             for colour in colours:
                 self.create_oval([p-5 for p in points[colour[0]]],
                                  [p+5 for p in points[colour[0]]],
-                                 fill=COLOURS[0][colour[1]])
+                                 fill=self.parent.cols['points'][colour[1]])
             # Create list of doubles of edge distance and edge number
             distances = []
             for i in range(len(edges)):
