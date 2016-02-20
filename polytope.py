@@ -1,9 +1,8 @@
 """
-Polytope Player v0.95
+Polytope Player v0.96
 
 This program lets you play with polytopes!
-The colours of points, lines, faces, and axes can now be changed.
-The colours of menus and widgets can sorta be, like half-changed.
+The viewing algorithm is finally fixed. It took a lot of effort.
 """
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -429,7 +428,7 @@ class Main(ttk.Frame):
         # Grid view label and 4 view axis buttons
         viewLabel = ttk.Label(self.guiLeft, text='Views:')
         viewLabel.grid(row=9, column=0, rowspan=2, pady=(20,0))
-        self.viewBtns = [('x', [0, pi/2, pi/2]), ('y', [0, pi/2, pi/2]),
+        self.viewBtns = [('x', [0, pi/2, pi/2]), ('y', [pi/2, pi/2, pi/2]),
                          ('z', [0, 0, pi/2]), ('w', [0, 0, 0])]
         for i,(t,c) in enumerate(self.viewBtns):
             b = ttk.Button(self.guiLeft, text=t, width=5,
@@ -1780,53 +1779,81 @@ class Canvas(tk.Canvas):
         st = math.sin(viewAxis[0])
         ct = math.cos(viewAxis[0])
 
-        u = (so*sp*ct, so*sp*st, so*cp, co)
-        w = (-st, ct, 0, 0)
-        h = (cp*ct, cp*st, -sp, 0)
+        w = (-st, ct, 0, 0)                     # Directions of bases of
+        h = (cp*ct, cp*st, -sp, 0)              # the picture hyperplane
         b = (-co*sp*ct, -co*sp*st, -co*cp, so)
-        d = self.parent.dist.get()
-        f = d + RETINA
+        u = (so*sp*ct, so*sp*st, so*cp, co)     # Direction of viewAxis
+        d = self.parent.dist.get()              # Distance along viewAxis
+        f = d + RETINA                          # Distance to picture plane
 
         result = []
-        for x,y,z,w in points:
-            t = (f-x*u[0]-y*u[1]-z*u[2]-w*u[3])/ \
-                (d-x*u[0]-y*u[1]-z*u[2]-w*u[3])
-            if abs(viewAxis[2]) < EPSILON:
-                if abs(viewAxis[1] - pi/2) < EPSILON:
-                    m = (1-t)*-z*sp
-                    if (abs(viewAxis[0]) < EPSILON or
-                        abs(viewAxis[0] - pi) < EPSILON):
-                        n = (1-t)*y*ct
-                        p = (1-t)*(-x*co*sp*ct)
+        for i in points:
+            e = sum([i[j]*u[j] for j in range(3)])
+            t = (f-e)/(d-e)
+            g = 1-t
+            k = d*t-f
+
+            # Gotta find m,n,p to satisfy the vector equation:
+            # g.i + k.u = p.b + n.h + m.w
+            # Expands into this system of equations. Can't divide by zero!
+            # g*x + k*so*sp*ct = - p*co*sp*ct + n*cp*ct - m*st
+            # g*y + k*so*sp*st = - p*co*sp*st + n*cp*st + m*ct
+            # g*z + k*so*cp    = - p*co*cp    - n*sp
+            # g*w + k*co       = + p*so
+            if abs(so) < EPSILON:
+                if abs(sp) < EPSILON:
+                    p = (g*i[2] + k*u[2]) / -1
+                    if abs(st) < EPSILON:
+                        n = (g*i[0] + k*u[0] - p*b[0])
+                        m = (g*i[1] + k*u[1] - p*b[1] - n*h[1])
+                    elif abs(ct) < EPSILON:
+                        n = (g*i[1] + k*u[1] - p*b[1])
+                        m = (g*i[0] + k*u[0] - p*b[0] - n*h[0]) / -1
                     else:
-                        n = (1-t)*(x-y*ct/st)*-st
-                        p = ((1-t)*y-n*ct)/(-co*sp*st)
+                        n = (g*i[0] + k*u[0] - p*b[0]) * ct + \
+                            (g*i[1] + k*u[1] - p*b[1]) * st
+                        m = (g*i[0] + k*u[0] - p*b[0] - n*h[0]) / -st
                 else:
-                    if (abs(viewAxis[0]) < EPSILON or
-                        abs(viewAxis[0] - pi) < EPSILON):
-                        n = (1-t)*y*ct
-                        m = (1-t)*(x-z*sp/cp*ct)*cp/ct
+                    if abs(st) < EPSILON:
+                        p = ((g*i[0] + k*u[0]) * sp +  \
+                             (g*i[2] + k*u[2]) * cp) / \
+                            (b[0] * sp + b[2] * cp)
+                        n = (g*i[0] + k*u[0] - p*b[0]) / cp
+                        m = (g*i[1] + k*u[1] - p*b[1] - n*h[1])
+                    elif abs(ct) < EPSILON:
+                        p = ((g*i[1] + k*u[1]) * sp +  \
+                             (g*i[2] + k*u[2]) * cp) / \
+                            (b[1] * sp + b[2] * cp)
+                        n = (g*i[1] + k*u[1] - p*b[1]) / cp
+                        m = (g*i[0] + k*u[0] - p*b[0] - n*h[0]) / -1
                     else:
-                        n = (1-t)*(x-y*ct/st)*(st/(ct*ct-st*st))
-                        m = ((1-t)*(y-z*sp/cp*st)+n*ct)*cp/st
-                    p = ((1-t)*z+m*sp)/(-co*cp)
+                        p = (((g*i[0] + k*u[0]) * ct +                  \
+                              (g*i[1] + k*u[1]) * st) * sp +            \
+                             (h[0]*ct + h[1]*st) * (g*i[2] + k*u[2])) / \
+                            ((b[0]*ct + b[1]*st) * sp +                 \
+                             (h[0]*ct + h[1]*st) * b[2])
+                        n = (g*i[2] + k*u[2] - p*b[2]) / -sp
+                        m = (g*i[0] + k*u[0] - p*b[0] - n*h[0]) / -st
             else:
-                p = ((1-t)*w+(d*t-f)*co)/so
-                if abs(viewAxis[1]) < EPSILON:
-                    if (abs(viewAxis[0]) < EPSILON or
-                        abs(viewAxis[0] - pi) < EPSILON):
-                        n = (1-t)*y*ct
-                        m = (1-t)*x*cp*ct
+                p = (g*i[3] + k*u[3]) / so
+                if abs(sp) < EPSILON:
+                    if abs(st) < EPSILON:
+                        n = (g*i[0] + k*u[0] - p*b[0])
+                        m = (g*i[1] + k*u[1] - p*b[1] - n*h[1])
+                    elif abs(ct) < EPSILON:
+                        n = (g*i[1] + k*u[1] - p*b[1])
+                        m = (g*i[0] + k*u[0] - p*b[0] - n*h[0]) / -1
                     else:
-                        n = (1-t)*(x-y*ct/st)*-st
-                        m = ((1-t)*y-n*ct)/(cp*st)
+                        n = (g*i[0] + k*u[0] - p*b[0]) * ct + \
+                            (g*i[1] + k*u[1] - p*b[1]) * st
+                        m = (g*i[0] + k*u[0] - p*b[0] - n*h[0]) / -st
                 else:
-                    m = -((1-t)*z+(d*t-f)*so*sp+p*co*cp)/sp
-                    if (abs(viewAxis[0]) < EPSILON or
-                        abs(viewAxis[0] - pi) < EPSILON):
-                        n = (1-t)*y*ct
+                    n = (g*i[2] + k*u[2] - p*b[2]) / -sp
+                    if abs(ct) < EPSILON:
+                        m = (g*i[0] + k*u[0] - p*b[0] - n*h[0]) / -st
                     else:
-                        n = -((1-t)*x+(d*t-f)*so*sp*ct-m*cp*ct+p*co*sp*ct)/st
+                        m = (g*i[1] + k*u[1] - p*b[1] - n*h[1]) / ct
+
             result.append((m*self.parent.zoom.get(),n*self.parent.zoom.get()))
         return result
 
