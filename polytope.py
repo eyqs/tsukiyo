@@ -1,15 +1,16 @@
 """
-Polytope Player v0.96
+Polytope Player v0.97
 
 This program lets you play with polytopes!
-The viewing algorithm is finally fixed. It took a lot of effort.
+Keep my 9-day polytope commit streak. Make lines fit within 78 columns.
+Use style.map() in _set_style to set colours of disabled widgets too.
 """
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
 import random
 
-TITLE = 'Polytope Player v0.95'
+TITLE = 'Polytope Player v0.97'
 DESCRIPTION = '\nThis script lets you play with polytopes.'
 WIDTH = 600
 HEIGHT = 550
@@ -101,8 +102,8 @@ def satisfy_axis_restrictions(axis):
     Make an axis in spherical coordinates satisfy the restrictions:
     0 <= theta < 2pi, 0 <= phi < pi, 0 <= omega < pi, 0 <= whatever < pi ...
 
-    axis: the spherical coordinates of the axis, excluding r (list, len=>1)
-    return: equivalent coordinates that satisfy the restrictions (list, len=>1)
+    axis: the spherical coordinates of the axis, excluding r (list, len>=1)
+    return: equivalent coordinates that satisfy restrictions (list, len>=1)
     """
     for angle in axis:
         while angle >= 2*pi:
@@ -164,7 +165,7 @@ class Main(ttk.Frame):
 
     Public variables:
     parent              Parent of class (tk.Tk)
-    colours             To change the colours of the program (list)
+    cols                To change the colours of the program (dict)
     canvas              Instance of Canvas class (Canvas)
     guiLeft             Left collapsible sidebar (ttk.Frame)
     guiRight            Right collapsible sidebar (ttk.Frame)
@@ -232,9 +233,9 @@ class Main(ttk.Frame):
             'lines': {'sphere': '#666', 'face': '#000'},
             'faces':
                 {3:'#719', 4:'#1B1', 5:'#04D', 6:'#F8C', 7:'#630', 8:'#E00',
-                 9:'#9DF', 10:'#098', 11:'#F70', 12:'#9F7',     # Convex polys
+                 9:'#9DF', 10:'#098', 11:'#F70', 12:'#9F7', # Convex polygons
                  13:'#C07', 14:'#FF1', 15:'#7BF', 16:'#999', 17:'#8F0',
-                 18:'#B7F', 19:'#90E', 20:'#030', 21:'#0CA'},   # Star polygons
+                 18:'#B7F', 19:'#90E', 20:'#030', 21:'#0CA'},   # Star polys
             'axes': ['#F00', '#0F0', '#00F', '#F90'],   # One for each axis
             'menus': {'bg': '#CCC', 'blank': '#FFF', 'info': '#F00'}}
         self._mousePressed = False
@@ -263,7 +264,8 @@ class Main(ttk.Frame):
                                    command=lambda: self._make_popups('Help'))
         self._fileMenu.add_command(label='Exit', underline=1,
                                    command=self.close)
-        self._menuBar.add_cascade(label='File', menu=self._fileMenu, underline=0)
+        self._menuBar.add_cascade(label='File', menu=self._fileMenu,
+                                  underline=0)
 
     def _make_popups(self, popUpType):
         # Create the actual pop-up windows.
@@ -288,7 +290,8 @@ class Main(ttk.Frame):
         popUpFrame = tk.Toplevel(self.parent,
                                  background=self.cols['menus']['bg'])
         popUpFrame.title(titleText)
-        popUpMessage = tk.Message(popUpFrame,text=messageText,width=frameWidth,
+        popUpMessage = tk.Message(popUpFrame, text=messageText,
+                                  width=frameWidth,
                                   background=self.cols['menus']['bg'])
         popUpMessage.pack()
         popUpButton = ttk.Button(popUpFrame, text=buttonText,
@@ -311,14 +314,16 @@ class Main(ttk.Frame):
     def _set_style(self, style):
         # Set consistent background colour to all widgets
         # style: the style settings (ttk.Style)
-        style.configure('TFrame', background=self.cols['menus']['bg'])
-        style.configure('TLabel', background=self.cols['menus']['bg'])
-        style.configure('TButton', background=self.cols['menus']['bg'])
-        style.configure('TCheckbutton', background=self.cols['menus']['bg'])
-        style.configure('TScale', background=self.cols['menus']['bg'])
+        bg = self.cols['menus']['bg']
+        opts = [('!disabled', bg), ('disabled', bg)]
+        style.configure('TFrame', background=bg)
+        style.configure('TLabel', background=bg)
+        style.map('TCheckbutton', background=opts)
+        style.map('TButton', background=opts)
+        style.map('TScale', background=opts, troughcolor=opts)
         # Configure non-ttk widgets too
-        self._menuBar.configure(bg = self.cols['menus']['bg'])
-        self._fileMenu.configure(bg = self.cols['menus']['bg'])
+        self._menuBar.configure(background=bg, activebackground=bg)
+        self._fileMenu.configure(background=bg, activebackground=bg)
 
     def _initUI(self):
         # Initialize GUI placement and bind buttons.
@@ -556,7 +561,7 @@ class Main(ttk.Frame):
         self.rutheta = tk.DoubleVar()
         self.ruphi = tk.DoubleVar()
         self.ruomega = tk.DoubleVar()
-        self.rotuWidgets = [('θ', self.rutheta, 6.28), ('φ', self.ruphi, 3.14),
+        self.rotuWidgets = [('θ', self.rutheta, 6.28),('φ', self.ruphi, 3.14),
                             ('ω', self.ruomega, 3.14)]
         self.rotuEntries = []
         for i,(t,v,o) in enumerate(self.rotuWidgets):
@@ -579,7 +584,7 @@ class Main(ttk.Frame):
         self.rvtheta = tk.DoubleVar()
         self.rvphi = tk.DoubleVar()
         self.rvomega = tk.DoubleVar()
-        self.rotvWidgets = [('θ', self.rvtheta, 6.28), ('φ', self.rvphi, 3.14),
+        self.rotvWidgets = [('θ', self.rvtheta, 6.28),('φ', self.rvphi, 3.14),
                             ('ω', self.rvomega, 3.14)]
         self.rotvEntries = []
         for i,(t,v,o) in enumerate(self.rotvWidgets):
@@ -706,7 +711,7 @@ class Main(ttk.Frame):
             if event == 'clear':
                 self.statusText.set('Canvas cleared.')
             elif event == 'badinput':
-                self.statusText.set('Bad input!')   # Keep status on for FADEDELAY
+                self.statusText.set('Bad input!')
 
             elif event == 'view':
                 self.statusText.set('New view angle: ' + ', '.join(
