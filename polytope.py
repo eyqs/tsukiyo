@@ -1,18 +1,17 @@
 """
-Polytope Player v0.98
+Polytope Player v0.99
 
 This program lets you play with polytopes!
-Have 4 different menu colours and 3 different text colours, for fun.
-Turn zoom and dist into entries. Since scales control everything now,
-finally delete almost all of take_input and set_status, after using
-take_input for 74 versions to adjust all those parameters. Goodbye!
+Add menus and scales to set many different types of colours.
+Quick hack to get this feature out before first release, so
+look in the GitHub issues to find all the bugs that this adds.
 """
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
 import random
 
-TITLE = 'Polytope Player v0.98'
+TITLE = 'Polytope Player v0.99'
 DESCRIPTION = '\nThis script lets you play with polytopes.'
 WIDTH = 600
 HEIGHT = 550
@@ -33,16 +32,15 @@ SNUBABLE = (['2','3','3'], ['2','3','4'], ['2','3','5'], ['2','3','5/3'],
             ['2','3/2','4'], ['2','3/2','4/3'], ['2','3/2','5/3'],
             ['3/2','4','4'], ['3','5','5/3'])   # All the (|pqr) combinations
 POLYGONS = {0:'notgon', 1:'monogon', 2:'digon', # Polygon names
-            3:'triangle', 4:'square', 5:'pentagon', 6:'hexagon',
+            3:'triangle', 4:'quadrilateral', 5:'pentagon', 6:'hexagon',
             7:'heptagon', 8:'octagon', 9:'nonagon', 10:'decagon',
             13:'triangle', 14:'line', 15:'pentagram', 16:'hexagram',
             17:'heptagram', 18:'octagram', 19:'nonagram', 20:'decagram'}
 COLOURS = {'point': ['#000', '#F00', '#00F'],
            'line' : {'face': '#000', 'sphere': '#666'},
-           'face' : {3:'#719', 4:'#1B1', 5:'#04D', 6:'#F8C', 7:'#630',
-                     8:'#E00', 9:'#9DF', 10:'#098', 11:'#F70', 12:'#9F7',
-                     13:'#C07', 14:'#FF1', 15:'#7BF', 16:'#999', 17:'#8F0',
-                     18:'#B7F', 19:'#90E', 20:'#030', 21:'#0CA'},
+           'face' : {3:'#719',4:'#1B1',5:'#04D',6:'#F8C',7:'#630',8:'#E00',
+                     9:'#9DF', 10:'#098', 13:'#C07', 14:'#FF1', 15:'#7BF',
+                     16:'#999', 17:'#8F0', 18:'#B7F', 19:'#90E', 20:'#030'},
            'axis' : ['#F00', '#0F0', '#00F', '#F90'],
            'menu' : {'main': '#CCC', 'button': '#CCC',
                      'canvas': '#FFF', 'trough': '#BBB'},
@@ -214,6 +212,7 @@ class Main(ttk.Frame):
     __init__            Construct Main class.
     _make_menus         Initialize dropdown menus.
     _make_popups        Create the actual pop-up windows.
+    _set_colours        Set the new colours from the pop-up windows.
     _initUI             Initialize GUI placement and bind buttons.
     _collapse           Collapse the right sidebar.
     _valid              Ensure that scale entry inputs are valid.
@@ -260,6 +259,8 @@ class Main(ttk.Frame):
         # Initialize dropdown menus.
         self._menuBar = tk.Menu(self.parent)
         self.parent.config(menu=self._menuBar)
+
+        # Generic file menu bar
         self._fileMenu = tk.Menu(self._menuBar)
         # underline sets position of keyboard shortcut
         self._fileMenu.add_command(label='About', underline=0,
@@ -271,24 +272,64 @@ class Main(ttk.Frame):
         self._menuBar.add_cascade(label='File', menu=self._fileMenu,
                                   underline=0)
 
+        # Menus to adjust all colours
+        self._colourMenu = tk.Menu(self._menuBar)
+        self._colourMenu.add_command(label='Point Colours',
+            underline=0, command=lambda: self._make_popups('Point'))
+        self._colourMenu.add_command(label='Line Colours',
+            underline=0, command=lambda: self._make_popups('Line'))
+        self._colourMenu.add_command(label='Face Colours',
+            underline=0, command=lambda: self._make_popups('Face'))
+        self._colourMenu.add_command(label='Axis Colours',
+            underline=0, command=lambda: self._make_popups('Axis'))
+        self._colourMenu.add_command(label='Menu Colours',
+            underline=0, command=lambda: self._make_popups('Menu'))
+        self._colourMenu.add_command(label='Text Colours',
+            underline=0, command=lambda: self._make_popups('Text'))
+        self._menuBar.add_cascade(label='Colours', menu=self._colourMenu,
+                                  underline=0)
+
     def _make_popups(self, popUpType):
         # Create the actual pop-up windows.
         # popUpType: the type of pop-up window to make (str)
-        #            'About', 'Help'
 
         # Set individual window data based on popUpType
+        hasScales = True
+        buttonText = 'OK'
+        frameWidth = 400
+        frameHeight = 600
         if popUpType == 'About':
+            hasScales = False
             titleText = 'About this program...'
             messageText = '\n'.join((TITLE, DESCRIPTION))
-            buttonText = 'OK'
-            frameWidth = 400
-            frameHeight = 200
         elif popUpType == 'Help':
+            hasScales = False
             titleText = 'Help'
             messageText = ('Click the buttons to experience the magic!')
-            buttonText = 'Dismiss'
-            frameWidth = 400
-            frameHeight = 120
+        elif popUpType == 'Point':
+            colourTypes = ['Type 1', 'Type 2', 'Type 3']
+            titleText = 'Point Colours'
+            messageText = ('Select desired colours for each point type.')
+        elif popUpType == 'Line':
+            colourTypes = ['Face Edges', 'Sphere Lines']
+            titleText = 'Line Colours'
+            messageText = ('Select desired colours for each line type.')
+        elif popUpType == 'Face':
+            colourTypes = [POLYGONS[i].title() for i in range(3,11)]
+            titleText = 'Face Colours'
+            messageText = ('Select desired colours for each face type.')
+        elif popUpType == 'Axis':
+            colourTypes = ['x-Axis', 'y-Axis', 'z-Axis', 'w-Axis']
+            titleText = 'Axis Colours'
+            messageText = ('Select desired colours for each axis type.')
+        elif popUpType == 'Menu':
+            colourTypes = ['Main BG', 'Buttons', 'Canvas', 'Scale Troughs']
+            titleText = 'Menu Colours'
+            messageText = ('Select desired colours for the interface.')
+        elif popUpType == 'Text':
+            colourTypes = ['Normal', 'Disabled', 'Urgent']
+            titleText = 'Text Colours'
+            messageText = ('Select desired colours for each text type.')
 
         # Create pop-up window, each with title, message, and close button
         popUpFrame = tk.Toplevel(self.parent,
@@ -299,8 +340,50 @@ class Main(ttk.Frame):
                                   background=self.cols['menu']['main'],
                                   foreground=self.cols['text']['normal'])
         popUpMessage.pack()
-        popUpButton = ttk.Button(popUpFrame, text=buttonText,
-                                 command=popUpFrame.destroy)
+
+        # Create scales to adjust colours
+        if hasScales:
+            slidersFrame = ttk.Frame(popUpFrame)
+            slidersFrame.pack()
+            colourVars = []
+            colourWidgets = []
+
+            # Make red, green, and blue scales for each type of colour
+            for i,colour in enumerate(colourTypes):
+                l = ttk.Label(slidersFrame, text=colour)
+                l.grid(row=0+4*int(i/4), column=3*(i%4), columnspan=3)
+                colourVars.extend([tk.DoubleVar(), tk.DoubleVar(),
+                                   tk.DoubleVar()]) # 4 types on each row
+                colourWidgets.extend([('Red', colourVars[-3], 255),
+                                      ('Green', colourVars[-2], 255),
+                                      ('Blue', colourVars[-1], 255)])
+
+            for i,(t,v,o) in enumerate(colourWidgets):
+                l = ttk.Label(slidersFrame, text=t)
+                l.grid(row=1+4*int(i/12), column=i%12)
+                d = ttk.Entry(slidersFrame, textvariable=v, width=4,
+                              validate='key', validatecommand=(self.register(
+                              self._valid), '%P', o, 'float'))
+                if i%3 == 0:    # Pad groups of 3 RGBs together
+                    d.grid(row=2+4*int(i/12), column=i%12, padx=(20,0))
+                elif i%3 == 1:  # Have 6 groups of 4 on each row
+                    d.grid(row=2+4*int(i/12), column=i%12)
+                elif i%3 == 2:
+                    d.grid(row=2+4*int(i/12), column=i%12, padx=(0,20))
+                s = ttk.Scale(slidersFrame, orient=tk.VERTICAL,
+                              from_=0, to=o, variable=v)
+                s.grid(row=3+4*int(i/12), column=i%12)
+
+            popUpButton = ttk.Button(popUpFrame, text=buttonText,
+                                     command=lambda t=popUpType, c=colourVars,
+                                     f=popUpFrame: self._set_colours(t,c,f))
+            popUpFrame.bind('<Key-Return>', lambda t=popUpType, c=colourVars,
+                            f=popUpFrame: self._set_colours(t,c,f))
+        # Pack button at the end
+        else:
+            popUpButton = ttk.Button(popUpFrame, text=buttonText,
+                                     command=popUpFrame.destroy)
+            popUpFrame.bind('<Key-Return>', command=popUpFrame.destroy)
         popUpButton.pack()
 
         # Center the pop-up with respect to the main window
@@ -315,6 +398,53 @@ class Main(ttk.Frame):
         popUpFrame.grab_set()
         popUpButton.focus()
         self.wait_window(popUpFrame)
+
+    def _set_colours(self, popUpType, colourVars, popUpFrame):
+        # Set the new colours from the scales in the Colours menus
+        # popUpType: the type of menu to get new colours from (str)
+        # colourVars: the values of the scales (list of tk.DoubleVars)
+        # popUpFrame: the pop-up frame that should be destroyed (tk.Toplevel)
+
+        deccols = [int(c.get()) for c in colourVars]
+
+        if popUpType == 'Point':
+            self.cols['point'] = ['#{0:02x}{1:02x}{2:02x}'.format(
+                deccols[3*i+0], deccols[3*i+1], deccols[3*i+2])
+                for i in range(int(len(deccols)/3))]
+        elif popUpType == 'Line':
+            self.cols['line']['face'] = '#{0:02x}{1:02x}{2:02x}'.format(
+                deccols[0], deccols[1], deccols[2])
+            self.cols['line']['sphere'] = '#{0:02x}{1:02x}{2:02x}'.format(
+                deccols[3], deccols[4], deccols[5])
+        elif popUpType == 'Face':
+            j = 0
+            for i in range(3,11):
+                self.cols['face'][i] = '#{0:02x}{1:02x}{2:02x}'.format(
+                    deccols[j+0], deccols[j+1], deccols[j+2])
+                j += 3
+        elif popUpType == 'Axis':
+            self.cols['axis'] = ['#{0:02x}{1:02x}{2:02x}'.format(
+                deccols[3*i+0], deccols[3*i+1], deccols[3*i+2])
+                for i in range(int(len(deccols)/3))]
+        elif popUpType == 'Menu':
+            self.cols['menu']['main'] = '#{0:02x}{1:02x}{2:02x}'.format(
+                deccols[0], deccols[1], deccols[2])
+            self.cols['menu']['button'] = '#{0:02x}{1:02x}{2:02x}'.format(
+                deccols[3], deccols[4], deccols[5])
+            self.cols['menu']['canvas'] = '#{0:02x}{1:02x}{2:02x}'.format(
+                deccols[6], deccols[7], deccols[8])
+            self.cols['menu']['trough'] = '#{0:02x}{1:02x}{2:02x}'.format(
+                deccols[9], deccols[10], deccols[11])
+        elif popUpType == 'Text':
+            self.cols['text']['urgent'] = '#{0:02x}{1:02x}{2:02x}'.format(
+                deccols[0], deccols[1], deccols[2])
+            self.cols['text']['disabled'] = '#{0:02x}{1:02x}{2:02x}'.format(
+                deccols[3], deccols[4], deccols[5])
+            self.cols['text']['urgent'] = '#{0:02x}{1:02x}{2:02x}'.format(
+                deccols[6], deccols[7], deccols[8])
+
+        popUpFrame.destroy()    # Can't put multiple statements in a lambda
+        self._set_style()
 
     def _initUI(self):
         # Initialize GUI placement and bind buttons.
@@ -618,7 +748,7 @@ class Main(ttk.Frame):
 
         # Set consistent background colour to all ttk widgets
         self._style = ttk.Style()
-        self._set_style(self._style)
+        self._set_style()
         self.change('r')    # Initialize all properties with default values
 
     def _collapse(self, sidebar):
@@ -699,9 +829,9 @@ class Main(ttk.Frame):
         else:
             self.change(button)
 
-    def _set_style(self, style):
+    def _set_style(self):
         # Set consistent background colour to all widgets
-        # style: the style settings (ttk.Style)
+        style = self._style
 
         # Create shaded colours for disabled/active states
         colours = [self.cols['menu']['main'], self.cols['menu']['button'],
