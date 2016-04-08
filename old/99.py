@@ -1,28 +1,18 @@
-#!/usr/bin/env python
 """
-Tsukiyo v1.0.1
-Copyright © 2014, 2015, 2016 Eugene Y. Q. Shen.
+Polytope Player v0.99
 
-Tsukiyo is free software: you can redistribute it and/or
-modify it under the terms of the GNU General Public License
-as published by the Free Software Foundation, either version
-3 of the License, or (at your option) any later version.
-
-Tsukiyo is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty
-of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-See the GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program. If not, see http://www.gnu.org/licenses/.
+This program lets you play with polytopes!
+Add menus and scales to set many different types of colours.
+Quick hack to get this feature out before first release, so
+look in the GitHub issues to find all the bugs that this adds.
 """
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
 import random
 
-TITLE = 'Tsukiyo v1.0'
-DESCRIPTION = '\nThis program displays beautiful polyhedra.'
+TITLE = 'Polytope Player v0.99'
+DESCRIPTION = '\nThis script lets you play with polytopes.'
 WIDTH = 600
 HEIGHT = 550
 pi = math.pi
@@ -393,7 +383,7 @@ class Main(ttk.Frame):
         else:
             popUpButton = ttk.Button(popUpFrame, text=buttonText,
                                      command=popUpFrame.destroy)
-            popUpFrame.bind('<Key-Return>', popUpFrame.destroy)
+            popUpFrame.bind('<Key-Return>', command=popUpFrame.destroy)
         popUpButton.pack()
 
         # Center the pop-up with respect to the main window
@@ -460,10 +450,10 @@ class Main(ttk.Frame):
         # Initialize GUI placement and bind buttons.
 
         # Must keep references to avoid garbage-collection
-        self._leftBtn = tk.PhotoImage(file='left.gif')
-        self._rightBtn = tk.PhotoImage(file='right.gif')
-        self._upBtn = tk.PhotoImage(file='up.gif')
-        self._downBtn = tk.PhotoImage(file='down.gif')
+        self._leftBtn = tk.PhotoImage(file='leftButtonTwentyFour.gif')
+        self._rightBtn = tk.PhotoImage(file='rightButtonTwentyFour.gif')
+        self._upBtn = tk.PhotoImage(file='upButtonEleven.gif')
+        self._downBtn = tk.PhotoImage(file='downButtonEleven.gif')
 
         # Grid main widget frames
         # On left: title on top, canvas on middle, guiBottom on bottom
@@ -550,7 +540,7 @@ class Main(ttk.Frame):
         wythoffLabel.grid(row=4, column=0, columnspan=3, pady=(20,0))
         self.barBtns = [('(pqs)', 'a'), ('(|pqs)', 'b'), ('(pqs|)', 'c'),
                         ('(p|qs)', 'p'), ('(q|sp)', 'q'), ('(s|pq)', 's'),
-                        ('(pq|s)', 'pq'), ('(qs|p)', 'qs'), ('(sp|q)', 'sp')]
+                        ('(pq|s)', 'pq'), ('(qs|p)', 'qs'), ('(sq|q)', 'sp')]
         for i,(t,c) in enumerate(self.barBtns):
             b = ttk.Button(self.guiLeft, text=t, width=5,
                            command=lambda c=c: self.canvas.set_bar(c))
@@ -2693,13 +2683,10 @@ class Axes(Object):
 
 
 
-if __name__ == '__main__':
-    root = tk.Tk()
-    main = Main(root)
-    root.bind('<Up>', lambda event: main.change('d-'))
-    root.bind('<Down>', lambda event: main.change('d+'))
-    root.bind('<Left>', lambda event: main.canvas.rotate(0))
-    root.bind('<Right>', lambda event: main.canvas.rotate(1))
-    icon = tk.PhotoImage(file='icon.gif')
-    root.iconphoto(icon, icon)
-    root.mainloop()
+root = tk.Tk()
+main = Main(root)
+root.bind('<Up>', lambda event: main.change('d-'))
+root.bind('<Down>', lambda event: main.change('d+'))
+root.bind('<Left>', lambda event: main.canvas.rotate(0))
+root.bind('<Right>', lambda event: main.canvas.rotate(1))
+root.mainloop()

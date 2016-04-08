@@ -1,28 +1,20 @@
-#!/usr/bin/env python
 """
-Tsukiyo v1.0.1
-Copyright © 2014, 2015, 2016 Eugene Y. Q. Shen.
+Polytope Player v0.88
 
-Tsukiyo is free software: you can redistribute it and/or
-modify it under the terms of the GNU General Public License
-as published by the Free Software Foundation, either version
-3 of the License, or (at your option) any later version.
-
-Tsukiyo is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty
-of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-See the GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program. If not, see http://www.gnu.org/licenses/.
+This program lets you play with polytopes!
+The canvas now retains its zoom, dist, and rotaxis between objects,
+instead of resetting everything every time the object changes.
+Polytopes don't keep their rotation, but the Sphere/Axes do,
+which can be considered more of a feature than a bug.
+Also, clearing and Wythoff bars now actually work.
 """
 import tkinter as tk
 import tkinter.ttk as ttk
 import math
 import random
 
-TITLE = 'Tsukiyo v1.0'
-DESCRIPTION = '\nThis program displays beautiful polyhedra.'
+TITLE = 'Polytope Player v0.88'
+DESCRIPTION = '\nThis script lets you play with polytopes.'
 WIDTH = 600
 HEIGHT = 550
 pi = math.pi
@@ -42,19 +34,16 @@ SNUBABLE = (['2','3','3'], ['2','3','4'], ['2','3','5'], ['2','3','5/3'],
             ['2','3/2','4'], ['2','3/2','4/3'], ['2','3/2','5/3'],
             ['3/2','4','4'], ['3','5','5/3'])   # All the (|pqr) combinations
 POLYGONS = {0:'notgon', 1:'monogon', 2:'digon', # Polygon names
-            3:'triangle', 4:'quadrilateral', 5:'pentagon', 6:'hexagon',
+            3:'triangle', 4:'square', 5:'pentagon', 6:'hexagon',
             7:'heptagon', 8:'octagon', 9:'nonagon', 10:'decagon',
             13:'triangle', 14:'line', 15:'pentagram', 16:'hexagram',
             17:'heptagram', 18:'octagram', 19:'nonagram', 20:'decagram'}
-COLOURS = {'point': ['#000', '#F00', '#00F'],
-           'line' : {'face': '#000', 'sphere': '#666'},
-           'face' : {3:'#719',4:'#1B1',5:'#04D',6:'#F8C',7:'#630',8:'#E00',
-                     9:'#9DF', 10:'#098', 13:'#C07', 14:'#FF1', 15:'#7BF',
-                     16:'#999', 17:'#8F0', 18:'#B7F', 19:'#90E', 20:'#030'},
-           'axis' : ['#F00', '#0F0', '#00F', '#F90'],
-           'menu' : {'main': '#CCC', 'button': '#CCC',
-                     'canvas': '#FFF', 'trough': '#BBB'},
-           'text' : {'normal': '#000', 'disabled': '#EEE', 'urgent': '#F00'}}
+COLOURS = [('#000', '#F00', '#00F'),    # Temporary hardcoded constant colours
+           ('#EEE', '#BBB', '#999', '#666', '#333', '#000'),
+           {3:'#719',4:'#1B1',5:'#04D',6:'#F8C',7:'#630',8:'#E00',9:'#9DF',
+           10:'#098', 11:'#F70', 12:'#9F7', 13:'#C07', 14:'#FF1', 15:'#7BF',
+           16:'#999', 17:'#8F0', 18:'#B7F', 19:'#90E', 20:'#030', 21:'#0CA'},
+           ('#FD9', '#F00', '#0F0', '#00F', '#F90'), ('#CCC', '#FFF', '#F00')]
 
 
 
@@ -120,19 +109,20 @@ def cross4D(u, v, w, unit=[1]):
 def satisfy_axis_restrictions(axis):
     """
     Make an axis in spherical coordinates satisfy the restrictions:
-    0 <= theta < 2pi, 0 <= phi < pi, 0 <= omega < pi, 0 <= whatever < pi ...
+    0 <= theta < 2pi, 0 <= phi < pi, 0 <= omega < pi.
 
-    axis: the spherical coordinates of the axis, excluding r (list, len>=1)
-    return: equivalent coordinates that satisfy restrictions (list, len>=1)
+    axis: the spherical coordinates of the axis, excluding r (list, len=3)
+    return: equivalent coordinates that satisfy the restrictions (list, len=3)
     """
     for angle in axis:
         while angle >= 2*pi:
             angle -= 2*pi
         while angle < 0:
             angle += 2*pi
-    for i in range(1,len(axis)):
-        if axis[i] > pi:
-            axis[i] = 2*pi - axis[i]
+    if axis[1] > pi:
+        axis[1] = 2*pi - axis[1]
+    if axis[2] > pi:
+        axis[2] = 2*pi - axis[2]
     return axis
 
 def convert(point, toCartesian):
@@ -177,38 +167,20 @@ class Main(ttk.Frame):
     Public methods:
     set_status          Display status changes on the status bar.
     change              Change GUI values and re-render.
-    set_view            Change the current viewing axis and re-render.
-    set_light           Change properties of the lighting and re-render.
-    set_rotax           Change the rotation axis-plane and re-render.
-    take_input          Take text input from input box.
     close               Close the program.
 
     Public variables:
     parent              Parent of class (tk.Tk)
-    cols                To change the colours of the program (dict)
     canvas              Instance of Canvas class (Canvas)
-    guiLeft             Left collapsible sidebar (ttk.Frame)
-    guiRight            Right collapsible sidebar (ttk.Frame)
     statusLabel         To allow statusText to clear itself (ttk.Label)
     statusText          To display the current status (tk.StringVar)
     inputText           To display the current input (tk.StringVar)
-    leftText            To display the status of the sidebars (tk.StringVar)
-    rightText
     rotBtns             To allow the buttons to be disabled (list)
     barBtns                 all elements are ttk.Buttons
     viewBtns
-    viewWidgets         To allow the scales to be disabled (list)
-    rotuWidgets             all elements are ttk.Scales
-    rotvWidgets
-    viewEntries         To allow the entries to be disabled (list)
-    rotuEntries             all elements are ttk.Entrys
-    rotvEntries
     lint ltheta lphi    To keep track of light properties (tk.DoubleVars)
     lred lgreen lblue   To keep track of light colours (tk.IntVars)
     vtheta vphi vomega  To keep track of camera location (tk.DoubleVars)
-    rutheta ruphi       To keep track of rotation axis-plane location
-    ruomega rvtheta         (tk.DoubleVars)
-    rvphi rvomega
     sphere              To keep track of sphere check (tk.BooleanVar)
     axes                To keep track of axes check (tk.BooleanVar)
     wire                To keep track of wire check (tk.BooleanVar)
@@ -222,21 +194,14 @@ class Main(ttk.Frame):
     __init__            Construct Main class.
     _make_menus         Initialize dropdown menus.
     _make_popups        Create the actual pop-up windows.
-    _set_colours        Set the new colours from the pop-up windows.
     _initUI             Initialize GUI placement and bind buttons.
-    _collapse           Collapse the right sidebar.
     _valid              Ensure that scale entry inputs are valid.
     _poll               Handle events when buttons are pressed.
     _mouse_down
     _mouse_up
     _press
-    _set_style          Set consistent background colours.
 
     Private variables:
-    _style              To allow background colours to be changed (ttk.Style)
-    _menuBar                                                      (tk.Menu)
-    _fileMenu                                                     (tk.Menu)
-    _inputBox                                                     (tk.Entry)
     _mousePressed       To keep track of when mouse is pressed down (bool)
     _leftBtn            To avoid garbage collection (tk.PhotoImage)
     _rightBtn
@@ -250,7 +215,6 @@ class Main(ttk.Frame):
         Construct Main class.
         parent: the parent of main (tk.Tk)
         """
-        self.cols = COLOURS
         self._mousePressed = False
         self.parent = parent
         self.parent.title(TITLE)
@@ -267,133 +231,45 @@ class Main(ttk.Frame):
 
     def _make_menus(self):
         # Initialize dropdown menus.
-        self._menuBar = tk.Menu(self.parent)
-        self.parent.config(menu=self._menuBar)
-
-        # Generic file menu bar
-        self._fileMenu = tk.Menu(self._menuBar)
+        menuBar = tk.Menu(self.parent)
+        self.parent.config(menu=menuBar)
+        fileMenu = tk.Menu(menuBar)
         # underline sets position of keyboard shortcut
-        self._fileMenu.add_command(label='About', underline=0,
-                                   command=lambda: self._make_popups('About'))
-        self._fileMenu.add_command(label='Help', underline=0,
-                                   command=lambda: self._make_popups('Help'))
-        self._fileMenu.add_command(label='Exit', underline=1,
-                                   command=self.close)
-        self._menuBar.add_cascade(label='File', menu=self._fileMenu,
-                                  underline=0)
-
-        # Menus to adjust all colours
-        self._colourMenu = tk.Menu(self._menuBar)
-        self._colourMenu.add_command(label='Point Colours',
-            underline=0, command=lambda: self._make_popups('Point'))
-        self._colourMenu.add_command(label='Line Colours',
-            underline=0, command=lambda: self._make_popups('Line'))
-        self._colourMenu.add_command(label='Face Colours',
-            underline=0, command=lambda: self._make_popups('Face'))
-        self._colourMenu.add_command(label='Axis Colours',
-            underline=0, command=lambda: self._make_popups('Axis'))
-        self._colourMenu.add_command(label='Menu Colours',
-            underline=0, command=lambda: self._make_popups('Menu'))
-        self._colourMenu.add_command(label='Text Colours',
-            underline=0, command=lambda: self._make_popups('Text'))
-        self._menuBar.add_cascade(label='Colours', menu=self._colourMenu,
-                                  underline=0)
+        fileMenu.add_command(label='About', underline=0,
+                             command=lambda: self._make_popups('About'))
+        fileMenu.add_command(label='Help', underline=0,
+                             command=lambda: self._make_popups('Help'))
+        fileMenu.add_command(label='Exit', underline=1,
+                             command=self.close)
+        menuBar.add_cascade(label='File', menu=fileMenu, underline=0)
 
     def _make_popups(self, popUpType):
         # Create the actual pop-up windows.
         # popUpType: the type of pop-up window to make (str)
+        #            'About', 'Help'
 
         # Set individual window data based on popUpType
-        hasScales = True
-        buttonText = 'OK'
-        frameWidth = 400
-        frameHeight = 600
         if popUpType == 'About':
-            hasScales = False
             titleText = 'About this program...'
             messageText = '\n'.join((TITLE, DESCRIPTION))
+            buttonText = 'OK'
+            frameWidth = 400
+            frameHeight = 200
         elif popUpType == 'Help':
-            hasScales = False
             titleText = 'Help'
             messageText = ('Click the buttons to experience the magic!')
-        elif popUpType == 'Point':
-            colourTypes = ['Type 1', 'Type 2', 'Type 3']
-            titleText = 'Point Colours'
-            messageText = ('Select desired colours for each point type.')
-        elif popUpType == 'Line':
-            colourTypes = ['Face Edges', 'Sphere Lines']
-            titleText = 'Line Colours'
-            messageText = ('Select desired colours for each line type.')
-        elif popUpType == 'Face':
-            colourTypes = [POLYGONS[i].title() for i in range(3,11)]
-            titleText = 'Face Colours'
-            messageText = ('Select desired colours for each face type.')
-        elif popUpType == 'Axis':
-            colourTypes = ['x-Axis', 'y-Axis', 'z-Axis', 'w-Axis']
-            titleText = 'Axis Colours'
-            messageText = ('Select desired colours for each axis type.')
-        elif popUpType == 'Menu':
-            colourTypes = ['Main BG', 'Buttons', 'Canvas', 'Scale Troughs']
-            titleText = 'Menu Colours'
-            messageText = ('Select desired colours for the interface.')
-        elif popUpType == 'Text':
-            colourTypes = ['Normal', 'Disabled', 'Urgent']
-            titleText = 'Text Colours'
-            messageText = ('Select desired colours for each text type.')
+            buttonText = 'Dismiss'
+            frameWidth = 400
+            frameHeight = 120
 
         # Create pop-up window, each with title, message, and close button
-        popUpFrame = tk.Toplevel(self.parent,
-                                 background=self.cols['menu']['main'])
+        popUpFrame = tk.Toplevel(self.parent, background=COLOURS[4][0])
         popUpFrame.title(titleText)
         popUpMessage = tk.Message(popUpFrame, text=messageText,
-                                  width=frameWidth,
-                                  background=self.cols['menu']['main'],
-                                  foreground=self.cols['text']['normal'])
+                                  width=frameWidth, background=COLOURS[4][0])
         popUpMessage.pack()
-
-        # Create scales to adjust colours
-        if hasScales:
-            slidersFrame = ttk.Frame(popUpFrame)
-            slidersFrame.pack()
-            colourVars = []
-            colourWidgets = []
-
-            # Make red, green, and blue scales for each type of colour
-            for i,colour in enumerate(colourTypes):
-                l = ttk.Label(slidersFrame, text=colour)
-                l.grid(row=0+4*int(i/4), column=3*(i%4), columnspan=3)
-                colourVars.extend([tk.DoubleVar(), tk.DoubleVar(),
-                                   tk.DoubleVar()]) # 4 types on each row
-                colourWidgets.extend([('Red', colourVars[-3], 255),
-                                      ('Green', colourVars[-2], 255),
-                                      ('Blue', colourVars[-1], 255)])
-
-            for i,(t,v,o) in enumerate(colourWidgets):
-                l = ttk.Label(slidersFrame, text=t)
-                l.grid(row=1+4*int(i/12), column=i%12)
-                d = ttk.Entry(slidersFrame, textvariable=v, width=4,
-                              validate='key', validatecommand=(self.register(
-                              self._valid), '%P', o, 'float'))
-                if i%3 == 0:    # Pad groups of 3 RGBs together
-                    d.grid(row=2+4*int(i/12), column=i%12, padx=(20,0))
-                elif i%3 == 1:  # Have 6 groups of 4 on each row
-                    d.grid(row=2+4*int(i/12), column=i%12)
-                elif i%3 == 2:
-                    d.grid(row=2+4*int(i/12), column=i%12, padx=(0,20))
-                s = ttk.Scale(slidersFrame, orient=tk.VERTICAL,
-                              from_=0, to=o, variable=v)
-                s.grid(row=3+4*int(i/12), column=i%12)
-
-            popUpButton = ttk.Button(popUpFrame, text=buttonText,
-                                     command=lambda t=popUpType, c=colourVars,
-                                     f=popUpFrame: self._set_colours(t,c,f))
-            popUpFrame.bind('<Key-Return>', lambda t=popUpType, c=colourVars,
-                            f=popUpFrame: self._set_colours(t,c,f))
-        # Pack button at the end
-        else:
-            popUpButton = ttk.Button(popUpFrame, text=buttonText,
-                                     command=popUpFrame.destroy)
-            popUpFrame.bind('<Key-Return>', popUpFrame.destroy)
+        popUpButton = ttk.Button(popUpFrame, text=buttonText,
+                                 command=popUpFrame.destroy)
         popUpButton.pack()
 
         # Center the pop-up with respect to the main window
@@ -409,126 +285,52 @@ class Main(ttk.Frame):
         popUpButton.focus()
         self.wait_window(popUpFrame)
 
-    def _set_colours(self, popUpType, colourVars, popUpFrame):
-        # Set the new colours from the scales in the Colours menus
-        # popUpType: the type of menu to get new colours from (str)
-        # colourVars: the values of the scales (list of tk.DoubleVars)
-        # popUpFrame: the pop-up frame that should be destroyed (tk.Toplevel)
-
-        deccols = [int(c.get()) for c in colourVars]
-
-        if popUpType == 'Point':
-            self.cols['point'] = ['#{0:02x}{1:02x}{2:02x}'.format(
-                deccols[3*i+0], deccols[3*i+1], deccols[3*i+2])
-                for i in range(int(len(deccols)/3))]
-        elif popUpType == 'Line':
-            self.cols['line']['face'] = '#{0:02x}{1:02x}{2:02x}'.format(
-                deccols[0], deccols[1], deccols[2])
-            self.cols['line']['sphere'] = '#{0:02x}{1:02x}{2:02x}'.format(
-                deccols[3], deccols[4], deccols[5])
-        elif popUpType == 'Face':
-            j = 0
-            for i in range(3,11):
-                self.cols['face'][i] = '#{0:02x}{1:02x}{2:02x}'.format(
-                    deccols[j+0], deccols[j+1], deccols[j+2])
-                j += 3
-        elif popUpType == 'Axis':
-            self.cols['axis'] = ['#{0:02x}{1:02x}{2:02x}'.format(
-                deccols[3*i+0], deccols[3*i+1], deccols[3*i+2])
-                for i in range(int(len(deccols)/3))]
-        elif popUpType == 'Menu':
-            self.cols['menu']['main'] = '#{0:02x}{1:02x}{2:02x}'.format(
-                deccols[0], deccols[1], deccols[2])
-            self.cols['menu']['button'] = '#{0:02x}{1:02x}{2:02x}'.format(
-                deccols[3], deccols[4], deccols[5])
-            self.cols['menu']['canvas'] = '#{0:02x}{1:02x}{2:02x}'.format(
-                deccols[6], deccols[7], deccols[8])
-            self.cols['menu']['trough'] = '#{0:02x}{1:02x}{2:02x}'.format(
-                deccols[9], deccols[10], deccols[11])
-        elif popUpType == 'Text':
-            self.cols['text']['urgent'] = '#{0:02x}{1:02x}{2:02x}'.format(
-                deccols[0], deccols[1], deccols[2])
-            self.cols['text']['disabled'] = '#{0:02x}{1:02x}{2:02x}'.format(
-                deccols[3], deccols[4], deccols[5])
-            self.cols['text']['urgent'] = '#{0:02x}{1:02x}{2:02x}'.format(
-                deccols[6], deccols[7], deccols[8])
-
-        popUpFrame.destroy()    # Can't put multiple statements in a lambda
-        self._set_style()
-
     def _initUI(self):
         # Initialize GUI placement and bind buttons.
 
         # Must keep references to avoid garbage-collection
-        self._leftBtn = tk.PhotoImage(file='left.gif')
-        self._rightBtn = tk.PhotoImage(file='right.gif')
-        self._upBtn = tk.PhotoImage(file='up.gif')
-        self._downBtn = tk.PhotoImage(file='down.gif')
+        self._leftBtn = tk.PhotoImage(file='leftButtonTwentyFour.gif')
+        self._rightBtn = tk.PhotoImage(file='rightButtonTwentyFour.gif')
+        self._upBtn = tk.PhotoImage(file='upButtonEleven.gif')
+        self._downBtn = tk.PhotoImage(file='downButtonEleven.gif')
+
+        # Set consistent background colour to all ttk widgets
+        style = ttk.Style()
+        style.configure('TFrame', background=COLOURS[4][0])
+        style.configure('TLabel', background=COLOURS[4][0])
+        style.configure('TButton', background=COLOURS[4][0])
+        style.configure('TCheckbutton', background=COLOURS[4][0])
 
         # Grid main widget frames
-        # On left: title on top, canvas on middle, guiBottom on bottom
-        # All that on left, self.guiLeft on right, self.guiRight even righter
+        # Title on top, canvas and guiRight on middle, guiBottom on bottom
 
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
         titleLabel = ttk.Label(self, text=TITLE)
-        titleLabel.grid(row=0, column=0, pady=10)
+        titleLabel.grid(row=0, column=0, columnspan=2, pady=10)
         self.canvas = Canvas(self)
         self.canvas.grid(row=1, column=0, padx=10,
                          sticky=tk.N+tk.E+tk.S+tk.W)
-        # 20px padding on bottom but 0px on top since canvas is already padded
+        guiRight = ttk.Frame(self)
+        # 10px padding on right but 0px on left since canvas is already padded
+        guiRight.grid(row=1, column=1, padx=(0,10), sticky=tk.N)
         guiBottom = ttk.Frame(self)
         guiBottom.columnconfigure(0, weight=1)
-        guiBottom.grid(row=2, column=0, padx=10, pady=(0,20),sticky=tk.E+tk.W)
-        self.guiLeft = ttk.Frame(self)
-        self.guiLeft.grid(row=0, column=1, rowspan=3, pady=20, sticky=tk.N)
-        self.guiRight = ttk.Frame(self)
-        self.guiRight.grid(row=0, column=2, rowspan=3, padx=10, sticky=tk.N)
+        guiBottom.grid(row=2, column=0, columnspan=2,
+                        padx=10, pady=(0,20), sticky=tk.E+tk.W)
 
-        # Grid guiBottom widgets: 2 rows, 4 columns
-
-        # Grid status label, text box, and link them to statusText, inputText
-        self.statusText = tk.StringVar()
-        self.statusLabel = ttk.Label(guiBottom, textvariable=self.statusText,
-                                     foreground=self.cols['text']['urgent'])
-        self.statusLabel.grid(row=0, column=0, columnspan=4, sticky=tk.W)
-        self.inputText = tk.StringVar()
-        # Make into tk.Entry to avoid being overriden by ttk styles
-        self._inputBox = tk.Entry(guiBottom, textvariable=self.inputText)
-        self._inputBox.bind('<Key-Return>', self.take_input)
-        self._inputBox.grid(row=1, column=0, columnspan=4, sticky=tk.E+tk.W)
-        self._inputBox.focus()  # Put initial keyboard focus on inputBox
-
-        # Grid reset and collapse buttons
-        resetBtn = ttk.Button(guiBottom, text='Reset',
-                              command=lambda: self.change('r'))
-        resetBtn.bind('<Key-Return>', lambda event: self.change('r'))
-        resetBtn.grid(row=0, column=1, sticky=tk.E)
-        self.leftText = tk.StringVar()
-        self.leftText.set('Collapse Left Sidebar >>')
-        leftBtn = ttk.Button(guiBottom, textvariable=self.leftText,
-                             command=lambda: self._collapse('left'))
-        leftBtn.bind('<Key-Return>', lambda event: self._collapse('left'))
-        leftBtn.grid(row=0, column=2)
-        self.rightText = tk.StringVar()
-        self.rightText.set('Collapse Right Sidebar >>')
-        rightBtn = ttk.Button(guiBottom, textvariable=self.rightText,
-                              command=lambda: self._collapse('right'))
-        rightBtn.bind('<Key-Return>', lambda event: self._collapse('right'))
-        rightBtn.grid(row=0, column=3)
-
-        # Grid guiLeft widgets: 21 rows, 3 columns
+        # Grid guiRight widgets: 21 rows, 3 columns
 
         # Grid rotate label, 2 rotate buttons, and 6 rotation axis buttons
-        rotateLabel = ttk.Label(self.guiLeft, text='Rotate:')
+        rotateLabel = ttk.Label(guiRight, text='Rotate:')
         rotateLabel.grid(row=0, column=0, columnspan=3)
-        leftRotBtn = ttk.Button(self.guiLeft, image=self._leftBtn,
+        leftRotBtn = ttk.Button(guiRight, image=self._leftBtn,
                                 command=lambda: self.canvas.rotate(0))
         leftRotBtn.bind('<Button-1>', lambda event: self._mouse_down('r0'))
         leftRotBtn.bind('<ButtonRelease-1>', self._mouse_up)
         leftRotBtn.bind('<Key-Return>', lambda event: self.canvas.rotate(0))
         leftRotBtn.grid(row=1, column=0, columnspan=2, sticky=tk.W)
-        rightRotBtn = ttk.Button(self.guiLeft, image=self._rightBtn,
+        rightRotBtn = ttk.Button(guiRight, image=self._rightBtn,
                                  command=lambda: self.canvas.rotate(1))
         rightRotBtn.bind('<Button-1>', lambda event: self._mouse_down('r1'))
         rightRotBtn.bind('<ButtonRelease-1>', self._mouse_up)
@@ -539,278 +341,171 @@ class Main(ttk.Frame):
         self.rotBtns = ['xw', 'yw', 'zw', 'xy', 'yz', 'xz']
         for i,t in enumerate(self.rotBtns):
             # Use default variable to ensure lambdas have different arguments
-            b = ttk.Button(self.guiLeft, text=t, width=5,
-                           command=lambda t=t: self.set_rotax(t))
-            b.bind('<Key-Return>', lambda event,t=t: self.set_rotax(t))
+            b = ttk.Button(guiRight, text=t, width=5,
+                           command=lambda t=t: self.canvas.set_rotax(t))
+            b.bind('<Key-Return>', lambda event,t=t: self.canvas.set_rotax(t))
             b.grid(row=int(2+i/3), column=i%3)
             self.rotBtns[i] = b     # Replace text with actual buttons
 
         # Grid Wythoff label and 9 Wythoff bar buttons
-        wythoffLabel = ttk.Label(self.guiLeft, text='Wythoff:')
+        wythoffLabel = ttk.Label(guiRight, text='Wythoff:')
         wythoffLabel.grid(row=4, column=0, columnspan=3, pady=(20,0))
         self.barBtns = [('(pqs)', 'a'), ('(|pqs)', 'b'), ('(pqs|)', 'c'),
                         ('(p|qs)', 'p'), ('(q|sp)', 'q'), ('(s|pq)', 's'),
-                        ('(pq|s)', 'pq'), ('(qs|p)', 'qs'), ('(sp|q)', 'sp')]
+                        ('(pq|s)', 'pq'), ('(qs|p)', 'qs'), ('(sq|q)', 'sp')]
         for i,(t,c) in enumerate(self.barBtns):
-            b = ttk.Button(self.guiLeft, text=t, width=5,
+            b = ttk.Button(guiRight, text=t, width=5,
                            command=lambda c=c: self.canvas.set_bar(c))
             b.bind('<Key-Return>', lambda event,c=c: self.canvas.set_bar(c))
             b.grid(row=int(5+i/3), column=i%3)
             self.barBtns[i] = b
 
-        # Grid view label and 4 view axis buttons
-        viewLabel = ttk.Label(self.guiLeft, text='Views:')
-        viewLabel.grid(row=9, column=0, rowspan=2, pady=(20,0))
-        self.viewBtns = [('x', [0, pi/2, pi/2]), ('y', [pi/2, pi/2, pi/2]),
-                         ('z', [0, 0, pi/2]), ('w', [0, 0, 0])]
-        for i,(t,c) in enumerate(self.viewBtns):
-            b = ttk.Button(self.guiLeft, text=t, width=5,
-                           command=lambda c=c: self.set_view(c))
-            b.bind('<Key-Return>', lambda event,c=c: self.set_view(c))
-            if i < 2:
-                b.grid(row=9, column=1+i%2, pady=(20,0))
-            else:
-                b.grid(row=10, column=1+i%2)
-            self.viewBtns[i] = b
-
         # Grid light axis and intensity labels, scales, and displays
-        lightLabel = ttk.Label(self.guiLeft, text='Light Properties:')
-        lightLabel.grid(row=11, column=0, columnspan=3, pady=(20,0))
+        lightLabel = ttk.Label(guiRight, text='Light Properties:')
+        lightLabel.grid(row=9, column=0, columnspan=3, pady=(20,0))
         self.lint = tk.DoubleVar()
         self.ltheta = tk.DoubleVar()
         self.lphi = tk.DoubleVar()
         lightWidgets = [('cd', self.lint, 2), ('θ', self.ltheta, 6.28),
                         ('φ', self.lphi, 3.14)]     # t = text, v = variable
         for i,(t,v,o) in enumerate(lightWidgets):   # o = maximum value (to)
-            l = ttk.Label(self.guiLeft, text=t)
-            l.grid(row=12, column=i)
-            d = ttk.Entry(self.guiLeft, textvariable=v, width=4,
-                          validate='key', validatecommand=(self.register(
-                          self._valid), '%P', o, 'float'))
+            l = ttk.Label(guiRight, text=t)
+            l.grid(row=10, column=i)
+            d = ttk.Entry(guiRight, textvariable=v, width=4, validate='key',
+                          validatecommand=(self.register(self._valid),'%P',o))
             d.bind('<Key-Return>', lambda event: self.change('s'))
-            d.grid(row=13, column=i)
-            s = ttk.Scale(self.guiLeft, orient=tk.VERTICAL, from_=0, to=o,
+            d.grid(row=11, column=i)
+            s = ttk.Scale(guiRight, orient=tk.VERTICAL, from_=0, to=o,
                           variable=v, command=lambda event: self.change('s'))
-            s.grid(row=14, column=i)
+            s.grid(row=12, column=i)
 
         # Grid light colours labels, scales, and displays
-        colourLabel = ttk.Label(self.guiLeft, text='Light Colours:')
-        colourLabel.grid(row=15, column=0, columnspan=3, pady=(20,0))
+        colourLabel = ttk.Label(guiRight, text='Light Colours:')
+        colourLabel.grid(row=13, column=0, columnspan=3, pady=(20,0))
         self.lred = tk.DoubleVar()
         self.lgreen = tk.DoubleVar()
         self.lblue = tk.DoubleVar()
         colourWidgets = [('Red', self.lred, 255), ('Green', self.lgreen, 255),
                          ('Blue', self.lblue, 255)]
         for i,(t,v,o) in enumerate(colourWidgets):
-            l = ttk.Label(self.guiLeft, text=t)
-            l.grid(row=16, column=i)
-            d = ttk.Entry(self.guiLeft, textvariable=v, width=4,
-                          validate='key', validatecommand=(self.register(
-                          self._valid), '%P', o, 'int'))
+            l = ttk.Label(guiRight, text=t)
+            l.grid(row=14, column=i)
+            d = ttk.Entry(guiRight, textvariable=v, width=4, validate='key',
+                          validatecommand=(self.register(self._valid),'%P',o))
             d.bind('<Key-Return>', lambda event: self.change('s'))
-            d.grid(row=17, column=i)
-            s = ttk.Scale(self.guiLeft, orient=tk.VERTICAL, from_=0, to=o,
+            d.grid(row=15, column=i)
+            s = ttk.Scale(guiRight, orient=tk.VERTICAL, from_=0, to=o,
                           variable=v, command=lambda event: self.change('s'))
-            s.grid(row=18, column=i)
-
-        # Grid distance label, display, and buttons
-        distLabel = ttk.Label(self.guiLeft, text='Camera Distance:')
-        distLabel.grid(row=19, column=0, columnspan=3, pady=(20,0))
-        self.dist = tk.IntVar()
-        dUpBtn = ttk.Button(self.guiLeft, image=self._upBtn,
-                            command=lambda: self.change('d+'))
-        dUpBtn.bind('<Button-1>', lambda event: self._mouse_down('d+'))
-        dUpBtn.bind('<ButtonRelease-1>', self._mouse_up)
-        dUpBtn.bind('<Key-Return>', lambda event: self.change('d+'))
-        dUpBtn.grid(row=20, column=0)
-        distEntry = ttk.Entry(self.guiLeft, textvariable=self.dist, width=5,
-                              justify=tk.CENTER, validate='key',
-                              validatecommand=(self.register(self._valid),
-                              '%P', ZOOM*RADIUS*RETINA, 'dz'))
-        distEntry.bind('<Key-Return>', lambda event: self.change('s'))
-        distEntry.grid(row=20, column=1)
-        dDownBtn = ttk.Button(self.guiLeft, image=self._downBtn,
-                              command=lambda: self.change('d-'))
-        dDownBtn.bind('<Button-1>', lambda event: self._mouse_down('d-'))
-        dDownBtn.bind('<ButtonRelease-1>', self._mouse_up)
-        dDownBtn.bind('<Key-Return>', lambda event: self.change('d-'))
-        dDownBtn.grid(row=20, column=2)
-
-        # Grid guiRight widgets: 20 rows, 3 columns
-
-        # Grid options label and 4 checkbuttons for toggling BooleanVars
-        optionsLabel = ttk.Label(self.guiRight, text='Options:')
-        optionsLabel.grid(row=0, column=0, columnspan=3, pady=(20,0))
-        self.sphere = tk.BooleanVar()
-        sphereCheck = ttk.Checkbutton(self.guiRight, text='Sphere',
-                                      variable=self.sphere,
-                                      command=lambda: self.change())
-        sphereCheck.grid(row=1, column=0, columnspan=3, sticky=tk.W)
-        self.axes = tk.BooleanVar()
-        axesCheck = ttk.Checkbutton(self.guiRight, text='Axes',
-                                    variable=self.axes,
-                                    command=lambda: self.change())
-        axesCheck.grid(row=2, column=0, columnspan=3, sticky=tk.W)
-        self.wire = tk.BooleanVar()
-        self.wireCheck = ttk.Checkbutton(self.guiRight, text='Wireframe',
-                                         variable=self.wire,
-                                         command=lambda: self.change())
-        self.wireCheck.grid(row=3, column=0, columnspan=3, sticky=tk.W)
-        self.only3D = tk.BooleanVar()
-        only3DCheck = ttk.Checkbutton(self.guiRight, text='Only 3D Mode',
-                                      variable=self.only3D,
-                                      command=lambda: self.change('3'))
-        only3DCheck.grid(row=4, column=0, columnspan=3, sticky=tk.W)
+            s.grid(row=16, column=i)
 
         # Grid view axis labels, scales, and displays
-        viewLabel = ttk.Label(self.guiRight, text='Camera Direction:')
-        viewLabel.grid(row=5, column=0, columnspan=3, pady=(29,0))
+        viewLabel = ttk.Label(guiRight, text='Camera Direction:')
+        viewLabel.grid(row=17, column=0, columnspan=3, pady=(20,0))
         self.vtheta = tk.DoubleVar()
         self.vphi = tk.DoubleVar()
         self.vomega = tk.DoubleVar()
-        self.viewWidgets = [('θ', self.vtheta, 6.28), ('φ', self.vphi, 3.14),
-                            ('ω', self.vomega, 3.14)]
-        self.viewEntries = []
-        for i,(t,v,o) in enumerate(self.viewWidgets):
-            l = ttk.Label(self.guiRight, text=t)
-            l.grid(row=6, column=i)
-            d = ttk.Entry(self.guiRight, textvariable=v, width=4,
-                          validate='key', validatecommand=(self.register(
-                          self._valid), '%P', o, 'float'))
+        viewWidgets = [('θ', self.vtheta, 6.28), ('φ', self.vphi, 3.14),
+                       ('ω', self.vomega, 3.14)]
+        for i,(t,v,o) in enumerate(viewWidgets):
+            l = ttk.Label(guiRight, text=t)
+            l.grid(row=18, column=i)
+            d = ttk.Entry(guiRight, textvariable=v, width=4, validate='key',
+                          validatecommand=(self.register(self._valid), '%P',o))
             d.bind('<Key-Return>', lambda event: self.change('s'))
-            d.grid(row=7, column=i)
-            s = ttk.Scale(self.guiRight, orient=tk.VERTICAL, from_=0, to=o,
+            d.grid(row=19, column=i)
+            s = ttk.Scale(guiRight, orient=tk.VERTICAL, from_=0, to=o,
                           variable=v, command=lambda event: self.change('s'))
-            s.grid(row=8, column=i)
-            self.viewWidgets[i] = s
-            self.viewEntries.append(d)
+            s.grid(row=20, column=i)
 
-        # Grid rotation axis-plane labels, scales, and displays
-        rotLabel = ttk.Label(self.guiRight, text='Rotation Axis-Plane:')
-        rotLabel.grid(row=9, column=0, columnspan=3, pady=(20,5))
-        rotuLabel = ttk.Label(self.guiRight, text='First Axis Basis:')
-        rotuLabel.grid(row=10, column=0, columnspan=3)
-        self.rutheta = tk.DoubleVar()
-        self.ruphi = tk.DoubleVar()
-        self.ruomega = tk.DoubleVar()
-        self.rotuWidgets = [('θ', self.rutheta, 6.28),('φ', self.ruphi, 3.14),
-                            ('ω', self.ruomega, 3.14)]
-        self.rotuEntries = []
-        for i,(t,v,o) in enumerate(self.rotuWidgets):
-            l = ttk.Label(self.guiRight, text=t)
-            l.grid(row=11, column=i)
-            d = ttk.Entry(self.guiRight, textvariable=v, width=4,
-                          validate='key', validatecommand=(self.register(
-                          self._valid), '%P', o, 'float'))
-            d.bind('<Key-Return>', lambda event: self.change('s'))
-            d.grid(row=12, column=i)
-            s = ttk.Scale(self.guiRight, orient=tk.VERTICAL, from_=0, to=o,
-                          variable=v, command=lambda event: self.change('s'))
-            s.grid(row=13, column=i)
-            self.rotuWidgets[i] = s
-            self.rotuEntries.append(d)
+        # Grid guiBottom widgets: 5 rows, 7 columns
 
-        # Grid rotation axis-plane labels, scales, and displays
-        rotvLabel = ttk.Label(self.guiRight, text='Second Axis Basis:')
-        rotvLabel.grid(row=14, column=0, columnspan=3, pady=(20,0))
-        self.rvtheta = tk.DoubleVar()
-        self.rvphi = tk.DoubleVar()
-        self.rvomega = tk.DoubleVar()
-        self.rotvWidgets = [('θ', self.rvtheta, 6.28),('φ', self.rvphi, 3.14),
-                            ('ω', self.rvomega, 3.14)]
-        self.rotvEntries = []
-        for i,(t,v,o) in enumerate(self.rotvWidgets):
-            l = ttk.Label(self.guiRight, text=t)
-            l.grid(row=15, column=i)
-            d = ttk.Entry(self.guiRight, textvariable=v, width=4,
-                          validate='key', validatecommand=(self.register(
-                          self._valid), '%P', o, 'float'))
-            d.bind('<Key-Return>', lambda event: self.change('s'))
-            d.grid(row=16, column=i)
-            s = ttk.Scale(self.guiRight, orient=tk.VERTICAL, from_=0, to=o,
-                          variable=v, command=lambda event: self.change('s'))
-            s.grid(row=17, column=i)
-            self.rotvWidgets[i] = s
-            self.rotvEntries.append(d)
+        # Grid status label, text box, and link them to statusText, inputText
+        self.statusText = tk.StringVar()
+        self.statusLabel = ttk.Label(
+            guiBottom, textvariable=self.statusText, foreground=COLOURS[4][2])
+        self.statusLabel.grid(row=0, column=0, columnspan=7, sticky=tk.W)
+        self.inputText = tk.StringVar()
+        inputBox = ttk.Entry(guiBottom, textvariable=self.inputText)
+        inputBox.bind('<Key-Return>', self.canvas.take_input)
+        inputBox.grid(row=1, column=0, columnspan=7, sticky=tk.E+tk.W)
+        inputBox.focus()    # Put initial keyboard focus on inputBox
 
-        # Grid zoom label, display, and buttons
-        zoomLabel = ttk.Label(self.guiRight, text='Camera Zoom:')
-        zoomLabel.grid(row=18, column=0, columnspan=3, pady=(20,0))
+        # Grid 4 checkbuttons for toggling BooleanVars
+        self.sphere = tk.BooleanVar()
+        sphereCheck = ttk.Checkbutton(guiBottom, text='Sphere',
+                                      variable=self.sphere,
+                                      command=lambda: self.change())
+        sphereCheck.grid(row=2, column=0, sticky=tk.W)
+        self.axes = tk.BooleanVar()
+        axesCheck = ttk.Checkbutton(guiBottom, text='Axes',
+                                    variable=self.axes,
+                                    command=lambda: self.change())
+        axesCheck.grid(row=3, column=0, sticky=tk.W)
+        self.wire = tk.BooleanVar()
+        self.wireCheck = ttk.Checkbutton(guiBottom, text='Wireframe',
+                                         variable=self.wire,
+                                         command=lambda: self.change())
+        self.wireCheck.grid(row=4, column=0, sticky=tk.W)
+        self.only3D = tk.BooleanVar()
+        only3DCheck = ttk.Checkbutton(guiBottom, text='Only 3D Mode',
+                                      variable=self.only3D,
+                                      command=lambda: self.change('3'))
+        only3DCheck.grid(row=5, column=0, sticky=tk.W)
+
+        # Grid view label and 4 view axis buttons
+        viewLabel = ttk.Label(guiBottom, text='Views:')
+        viewLabel.grid(row=2, column=1, columnspan=2, sticky=tk.E)
+        self.viewBtns = [('x', [0, pi/2, pi/2]), ('y', [0, pi/2, pi/2]),
+                         ('z', [0, 0, pi/2]), ('w', [0, 0, 0])]
+        for i,(t,c) in enumerate(self.viewBtns):
+            b = ttk.Button(guiBottom, text=t, width=2,
+                           command=lambda c=c: self.canvas.set_view(c))
+            b.bind('<Key-Return>', lambda event,c=c: self.canvas.set_view(c))
+            b.grid(row=2, column=3+i)
+            self.viewBtns[i] = b
+
+        # Grid zoom label, distance label, and 4 zoom/dist buttons
+        zoomLabel = ttk.Label(guiBottom, text='zoom:')
+        zoomLabel.grid(row=3, column=1, sticky=tk.E)
+        distLabel = ttk.Label(guiBottom, text='d:')
+        distLabel.grid(row=3, column=4, sticky=tk.E)
+        upDownBtns = ['z+', 'z-', 'd+', 'd-']
+        for i,c in enumerate(upDownBtns):
+            if i%2 == 0:    # Even indexes are up buttons
+                im = self._upBtn
+            else:
+                im = self._downBtn
+            b = ttk.Button(guiBottom, image=im,
+                           command=lambda c=c: self.change(c))
+            b.bind('<Button-1>', lambda event,c=c: self._mouse_down(c))
+            b.bind('<ButtonRelease-1>', self._mouse_up)
+            b.bind('<Key-Return>', lambda event,c=c: self.change(c))
+            b.grid(row=3, column=2+i+int(i/2))  # Gap to put distLabel
+
+        # Grid zoom display, distance display, and link them to zoom, dist
         self.zoom = tk.IntVar()
-        zUpBtn = ttk.Button(self.guiRight, image=self._upBtn,
-                            command=lambda: self.change('z+'))
-        zUpBtn.bind('<Button-1>', lambda event: self._mouse_down('z+'))
-        zUpBtn.bind('<ButtonRelease-1>', self._mouse_up)
-        zUpBtn.bind('<Key-Return>', lambda event: self.change('z+'))
-        zUpBtn.grid(row=19, column=0)
-        zoomEntry = ttk.Entry(self.guiRight, textvariable=self.zoom, width=5,
-                              justify=tk.CENTER, validate='key',
-                              validatecommand=(self.register(self._valid),
-                              '%P', ZOOM*RADIUS*RETINA/2, 'dz'))
-        zoomEntry.bind('<Key-Return>', lambda event: self.change('s'))
-        zoomEntry.grid(row=19, column=1)
-        zDownBtn = ttk.Button(self.guiRight, image=self._downBtn,
-                              command=lambda: self.change('z-'))
-        zDownBtn.bind('<Button-1>', lambda event: self._mouse_down('z-'))
-        zDownBtn.bind('<ButtonRelease-1>', self._mouse_up)
-        zDownBtn.bind('<Key-Return>', lambda event: self.change('z-'))
-        zDownBtn.grid(row=19, column=2)
+        zoomDisplay = ttk.Label(guiBottom, textvariable=self.zoom)
+        zoomDisplay.grid(row=4, column=0, columnspan=4, sticky=tk.E)
+        self.dist = tk.IntVar()
+        distDisplay = ttk.Label(guiBottom, textvariable=self.dist)
+        distDisplay.grid(row=4, column=4, columnspan=3, sticky=tk.E)
 
-        # Set consistent background colour to all ttk widgets
-        self._style = ttk.Style()
-        self._set_style()
-        self.change('r')    # Initialize all properties with default values
+        self.change('r')    # Set initial zoom and distance in change
+        self.canvas.reset() # Set initial settings in canvas
 
-    def _collapse(self, sidebar):
-        # Collapse the sidebars.
-        # sidebar: which sidebar to collapse, 'left' or 'right' (str)
-        if sidebar == 'left':
-            if self.leftText.get() == 'Collapse Left Sidebar >>':
-                self.leftText.set('Show Left Sidebar <<')
-                self.guiLeft.grid_remove()
-            elif self.leftText.get() == 'Show Left Sidebar <<':
-                self.leftText.set('Collapse Left Sidebar >>')
-                self.guiLeft.grid()
-        elif sidebar == 'right':
-            if self.rightText.get() == 'Collapse Right Sidebar >>':
-                self.rightText.set('Show Right Sidebar <<')
-                self.guiRight.grid_remove()
-            elif self.rightText.get() == 'Show Right Sidebar <<':
-                self.rightText.set('Collapse Right Sidebar >>')
-                self.guiRight.grid()
-
-    def _valid(self, entry, to, numType):
+    def _valid(self, entry, to):
         # Ensure that scale entry inputs are valid.
         # entry: the value of the entry if the edit is allowed (str)
-        # numType: the type of the entry, 'int' or 'float' (str)
         # to: the maximum value of the entry (float)
         # return: whether or not the edit is allowed (bool)
         if entry == '':
             return True         # Always allow empty string, to clear entry
-
-        if numType == 'int':
-            if len(entry) > 4:
-                return False    # Too long to fit, is invalid
-            try:
-                value = int(entry)
-            except ValueError:
-                return False    # Not an int, is invalid
-        elif numType == 'float':
-            if len(entry) > 4:
-                return False
-            try:
-                value = float(entry)
-            except ValueError:
-                return False    # Not a float, is invalid
-        elif numType == 'dz':
-            if len(entry) > 5:
-                return False
-            try:
-                value = int(entry)
-                if value == 0:  # Don't want zoom or dist to be zero
-                    return False
-            except ValueError:
-                return False    # Not an int, is invalid
+        if len(entry) > 4:
+            return False        # Too long to fit, is invalid
+        try:
+            value = float(entry)
+        except ValueError:
+            return False        # Not a float, is invalid
         if value < 0 or value > float(to):
             return False        # Out of from_ and to bounds, is invalid
         return True             # Otherwise, is valid
@@ -839,65 +534,27 @@ class Main(ttk.Frame):
         else:
             self.change(button)
 
-    def _set_style(self):
-        # Set consistent background colour to all widgets
-        style = self._style
-
-        # Create shaded colours for disabled/active states
-        colours = [self.cols['menu']['main'], self.cols['menu']['button'],
-                   self.cols['menu']['canvas'], self.cols['menu']['trough'],
-                   self.cols['text']['normal'], self.cols['text']['disabled']]
-        shaders = []
-        for hexcol in colours:
-            colour = []
-            for i in range(3):
-                deccol = int(hexcol[i+1], 16)
-                if deccol > 7:
-                    col = 16 * deccol * 0.8
-                else:
-                    col = 60 + 16 * deccol * 1.5
-                colour.append(int(max(0, min(255, col))))
-            shaders.append('#{0:02x}{1:02x}{2:02x}'.format(*colour))
-
-        # Configure ttk widget styles
-        style.configure('TFrame', background=colours[0],foreground=colours[4])
-        style.configure('TLabel', background=colours[0],foreground=colours[4])
-        style.map('TCheckbutton',
-            background =[('!disabled', colours[0]), ('disabled', colours[0])],
-            foreground =[('!disabled', colours[4]), ('disabled', colours[5])])
-        style.map('TButton',
-            background =[('!disabled', colours[1]), ('disabled', shaders[1])],
-            foreground =[('!disabled', colours[4]), ('disabled', colours[5])])
-        style.map('TScale',
-            background =[('!disabled', colours[0]), ('disabled', shaders[0])],
-            foreground =[('!disabled', colours[4]), ('disabled', colours[5])],
-            troughcolor=[('!disabled', colours[3]), ('disabled', shaders[3])])
-        style.map('TEntry', fieldbackground=[
-                         ('!disabled', colours[0]), ('disabled', shaders[0])],
-            foreground =[('!disabled', colours[4]), ('disabled', colours[5])])
-
-        # Configure non-ttk widgets too
-        self.canvas.configure(background=colours[2])
-        self._inputBox.configure(background=colours[2])
-        self.statusLabel.configure(foreground=self.cols['text']['urgent'])
-        self._menuBar.configure(background=colours[0],
-                                foreground=colours[4],
-                                activebackground=shaders[0],
-                                activeforeground=colours[5])
-        self._fileMenu.configure(background=colours[0],
-                                 foreground=colours[4],
-                                 activebackground=shaders[0],
-                                 activeforeground=colours[5])
-
     def set_status(self, event):
         """
         Display status changes on the status bar.
         event: the type of status change (str)
-               'clear', 'badinput', 'faces'
+               'clear', 'badinput', 'view', 'rot', 'lcol', 'faces'
         """
-        if event == '':
-            self.statusText.set('')
-        elif event == 'faces':  # Keep displaying number and types of faces
+        if event == 'clear':
+            self.statusText.set('Canvas cleared.')
+        elif event == 'badinput':
+            self.statusText.set('Bad input!')   # Keep status on for FADEDELAY
+            self.statusLabel.after(FADEDELAY, self.set_status, 'clear')
+        elif event == 'view':
+            self.statusText.set('New view angle: ' +
+                                self.canvas.get_data('view'))
+        elif event == 'rot':
+            self.statusText.set('New rotation axes: ' +
+                                self.canvas.get_data('rot'))
+        elif event == 'lcol':
+            self.statusText.set('New light colour: ' +
+                                self.canvas.get_data('lcol'))
+        elif event == 'faces':      # Display number and types of faces
             faceText = ''
             faces = self.canvas.get_data('faces')
             for i in range(3,21):
@@ -906,18 +563,12 @@ class Main(ttk.Frame):
                 if faces[i] > 1:
                     faceText += str(faces[i]) + ' ' + POLYGONS[i] + 's '
             self.statusText.set(faceText)
-        else:
-            if event == 'clear':
-                self.statusText.set('Canvas cleared.')
-            elif event == 'badinput':
-                self.statusText.set('Bad input!')
-            self.statusLabel.after(FADEDELAY, self.set_status, '')
 
     def change(self, change=None, value=0):
         """
         Change GUI values (checkboxes, zoom, distance) and re-render.
         change: the type of change to make (str)
-                'b', 'w', 'y', '3', 's', 'r', 'z+', 'z-', 'd+', 'd-'
+                'b', 'w', '3', 's', 'r', 'z', 'z+', 'z-', 'd', 'd+', 'd-'
         value: the value to change to (float), default 0
         """
         if change == None:      # When checkboxes are ticked, just re-render
@@ -927,89 +578,52 @@ class Main(ttk.Frame):
         elif change == 'w':     # Disable wireCheck if camera too close
             self.wire.set(True)
             self.wireCheck.config(state=tk.DISABLED)
-        elif change == 'y':
-            if value == 0:      # Disable Wythoff buttons if not a Wythoff
-                for i in range(9):
-                    self.barBtns[i].config(state=tk.DISABLED)
-            elif value == 1:    # Enable Wythoff buttons if it is a Wythoff
-                for i in range(9):
-                    self.barBtns[i].config(state=tk.NORMAL)
 
         elif change == '3':     # Disable 4D features if only 3D mode is on
             if self.only3D.get() == True:   # Disable 4D view button
                 self.viewBtns[3].config(state=tk.DISABLED)
-                self.viewWidgets[2].state(['disabled'])
-                self.viewEntries[2].state(['disabled'])
-                self.vomega.set(1.57)   # Reset omega component of view axis
-                for i in range(3,6):    # Disable 4D rotation buttons
+                for i in range(3,6):        # Disable 4D rotation buttons
                     self.rotBtns[i].config(state=tk.DISABLED)
-                self.ruomega.set(1.57)  # Reset w-component of first rotaxis
-                self.rotuWidgets[2].state(['disabled'])
-                self.rotuEntries[2].state(['disabled'])
-                for i in range(3):      # Disable second rotation axis scales
-                    self.rotvWidgets[i].state(['disabled'])
-                    self.rotvEntries[i].state(['disabled'])
-                self.rvtheta.set('{0:.2f}'.format(0))   # Set second rotaxis
-                self.rvphi.set('{0:.2f}'.format(0))     # as w-axis, so all
-                self.rvomega.set('{0:.2f}'.format(0))   # rotations are in 3D
+                self.canvas.set_rotax('xw') # Reset rotation and view axis
+                self.canvas.set_view([0, 0, pi/2])
                 self.wireCheck.config(state=tk.NORMAL)
-            else:                       # Enable everything above
+            else:                           # Enable everything above
                 self.viewBtns[3].config(state=tk.NORMAL)
-                self.viewWidgets[2].state(['!disabled'])
-                self.viewEntries[2].state(['!disabled'])
                 for i in range(3,6):
                     self.rotBtns[i].config(state=tk.NORMAL)
-                self.rotuWidgets[2].state(['!disabled'])
-                self.rotuEntries[2].state(['!disabled'])
-                for i in range(3):
-                    self.rotvWidgets[i].state(['!disabled'])
-                    self.rotvEntries[i].state(['!disabled'])
-                self.wire.set(True)     # Force wireframe mode to be true
+                self.wire.set(True)         # Force wireframe mode to be true
                 self.wireCheck.config(state=tk.DISABLED)
 
-        elif change == 's':
-            # Round float labels to two decimal places
+        elif change == 's':     # Round scale labels to two decimal places
             for s in (self.lint, self.ltheta, self.lphi,
-                      self.vtheta, self.vphi, self.vomega,
-                      self.rutheta, self.ruphi, self.ruomega,
-                      self.rvtheta, self.rvphi, self.rvomega):
+                      self.vtheta, self.vphi, self.vomega):
                 try:
                     s.get()
                 except tk.TclError:     # Error because tk expects a float
                     s.set(0)            # but the entry may be an empty string
                 s.set('{0:.2f}'.format(s.get()))
-
-            # Set zoom and dist to default values if blank
-            try:
-                self.zoom.get()
-            except tk.TclError:
-                self.zoom.set(ZOOM)
-            try:
-                self.unitDist = math.ceil(
-                    (ZOOM*RADIUS*RETINA/self.dist.get())**(2/3))
-                if self.dist.get() < 100:
-                    self.change('w')
-            except tk.TclError:
-                self.unitDist = 20
-                self.dist.set(int(ZOOM*RADIUS*RETINA/self.unitDist**(3/2)))
-
+            # Round RGB colour labels to zero decimal places
+            for s in (self.lred, self.lgreen, self.lblue):
+                try:
+                    s.get()
+                except tk.TclError:
+                    s.set(0)
+                s.set('{0:.0f}'.format(s.get()))
             # Update the current light colour and camera position
-            self.set_view([s.get() for s in
-                           (self.vtheta, self.vphi, self.vomega)])
-            self.set_light([s.get() for s in
-                            (self.lred, self.lgreen, self.lblue)])
-            self.set_rotax([[s.get() for s in
-                             (self.rutheta, self.ruphi, self.ruomega)],
-                            [s.get() for s in
-                             (self.rvtheta, self.rvphi, self.rvomega)]])
-            self.set_status('')     # Don't set any status
+            self.canvas.set_light([s.get() for s in
+                                   (self.lred, self.lgreen, self.lblue)])
+            self.canvas.set_view([s.get() for s in
+                                  (self.vtheta, self.vphi, self.vomega)])
+
+        elif change == 'li':
+            self.lint.set('{0:.2f}'.format(value))
+        elif change == 'la':
+            axis = satisfy_axis_restrictions(value)
+            self.ltheta.set('{0:.2f}'.format(axis[0]))
+            self.lphi.set('{0:.2f}'.format(axis[1]))
 
         elif change == 'r':     # Reset to initial states
             try:                # Canvas initializes before zoom
-                self.canvas.make_polytope(None)
-                self.set_view([0, 0, pi/2])
-                self.set_light([255,255,255])
-                self.set_rotax('xw')
                 self.lint.set('{0:.2f}'.format(1))
                 self.ltheta.set('{0:.2f}'.format(0))
                 self.lphi.set('{0:.2f}'.format(0))
@@ -1021,117 +635,45 @@ class Main(ttk.Frame):
                 self.dist.set(int(ZOOM*RADIUS*RETINA/self.unitDist**(3/2)))
                 self.sphere.set(False)
                 self.axes.set(False)
-                self.only3D.set(True)
                 self.change('3')    # Set 3D mode to True
-                self.change('y', 0) # Not a Wythoff
-                self.set_status('clear')
             except:
                 return
 
-        elif change == 'z+':    # Change zoom, explained in the constants
+        # All ZOOM values are explained with the constants
+        elif change == 'z':     # Set zoom to the given value or the max zoom
+            self.zoom.set(int(min(value, ZOOM*RADIUS*RETINA/2)))
+        elif change == 'z+':    # Change zoom by 5 per button press
             self.zoom.set(int(min(self.zoom.get() + 5, ZOOM*RADIUS*RETINA/2)))
-            if self.zoom.get() == 6:
-                self.zoom.set(5)    # Keep everything a multiple of 5
         elif change == 'z-':
             self.zoom.set(int(max(self.zoom.get() - 5, 1))) # Minimum 1, not 0
 
-        elif change == 'd-':    # Change distance, explained in change('r')
-            if self.dist.get() < 50:    # unitDist too big, just change dist
-                self.dist.set(max(1, self.dist.get() - 1))
-            else:                       # Change unitDist to change dist
-                self.unitDist += 1
-                self.dist.set(int(ZOOM*RADIUS*RETINA/self.unitDist**(3/2)))
-            if self.dist.get() < 100:
-                self.change('w')        # Camera too close, show wireframe
+        # Decreasing distance increases unitDist
+        elif change == 'd':     # Set distance to given value or max distance
+            self.dist.set(int(min(value, ZOOM*RADIUS*RETINA)))
+            self.unitDist = math.ceil((ZOOM*RADIUS*RETINA/value)**(2/3))
+            if self.unitDist >= 100:    # unitDist is an integer within bounds
+                self.unitDist = 100     # math.ceil guarantees unitDist >= 1
+            if self.unitDist**(3/2) > ZOOM*RETINA:  # If distance < RADIUS
+                self.change('w')                    # Camera is too close
+                return  # Call change again, so no need to re-render
+        elif change == 'd-':
+            self.unitDist += 1
+            if self.unitDist >= 100:
+                self.unitDist = 100
+            self.dist.set(int(ZOOM*RADIUS*RETINA/self.unitDist**(3/2)))
+            if self.unitDist**(3/2) > ZOOM*RETINA:
+                self.change('w')
+                return
         elif change == 'd+':
-            if self.dist.get() < 50:
-                self.dist.set(self.dist.get() + 1)
-            else:
-                self.unitDist = max(1, self.unitDist - 1)
-                self.dist.set(int(ZOOM*RADIUS*RETINA/self.unitDist**(3/2)))
-            if (self.dist.get() >= 100  # Camera is far enough
-                and self.canvas.get_data('star') == False):
+            self.unitDist -= 1
+            if self.unitDist < 1:
+                self.unitDist = 1
+            self.dist.set(int(ZOOM*RADIUS*RETINA/self.unitDist**(3/2)))
+            if (self.unitDist**(3/2) < ZOOM*RETINA      # Camera is far enough
+                and self.canvas.get_data('star') == 0):
                 self.wireCheck.config(state=tk.NORMAL)
 
         self.canvas.render()
-
-    def set_view(self, viewAxis):
-        """
-        Change the current viewing axis and re-render.
-        viewAxis: the viewing axis in spherical coordinates (list, len=3)
-        """
-        viewAxis = satisfy_axis_restrictions(viewAxis)
-        self.vtheta.set('{0:.2f}'.format(viewAxis[0]))
-        self.vphi.set('{0:.2f}'.format(viewAxis[1]))
-        self.vomega.set('{0:.2f}'.format(viewAxis[2]))
-        self.canvas.render()
-
-    def set_light(self, lcol):
-        """
-        Change properties of the lighting and re-render.
-        lcol: the light colour in RGB integers between 0 and 255 (list, len=3)
-        """
-        try:
-            self.lred.set('{0:.0f}'.format(lcol[0]))
-            self.lgreen.set('{0:.0f}'.format(lcol[1]))
-            self.lblue.set('{0:.0f}'.format(lcol[2]))
-        except:
-            pass    # Light colour scales not loaded yet, fix this soon!
-        self.canvas.render()
-
-    def set_rotax(self, rotAxis):
-        """
-        Change the current rotation axis-plane and re-render.
-        rotAxis: the rotation axis-plane as a list of two axes (list, len=2)
-                 all elements are in spherical coordinates (list, len=3)
-        """
-        # Button presses have specified rotAxis, manual inputs go through
-        if rotAxis == 'xw':
-            rotuAxis = (0, pi/2, pi/2)
-            rotvAxis = (0, 0, 0)
-        elif rotAxis == 'yw':
-            rotuAxis = (pi/2, pi/2, pi/2)
-            rotvAxis = (0, 0, 0)
-        elif rotAxis == 'zw':
-            rotuAxis = (0, 0, pi/2)
-            rotvAxis = (0, 0, 0)
-        elif rotAxis == 'xy':
-            rotuAxis = (0, pi/2, pi/2)
-            rotvAxis = (pi/2, pi/2, pi/2)
-        elif rotAxis == 'yz':
-            rotuAxis = (pi/2, pi/2, pi/2)
-            rotvAxis = (0, 0, pi/2)
-        elif rotAxis == 'xz':
-            rotuAxis = (0, pi/2, pi/2)
-            rotvAxis = (0, 0, pi/2)
-        else:
-            rotuAxis = rotAxis[0]
-            rotvAxis = rotAxis[1]
-        rotuAxis = satisfy_axis_restrictions(rotuAxis)
-        rotvAxis = satisfy_axis_restrictions(rotvAxis)
-        u = [self.rutheta, self.ruphi, self.ruomega]
-        v = [self.rvtheta, self.rvphi, self.rvomega]
-        for i in range(3):
-            u[i].set('{0:.2f}'.format(rotuAxis[i]))
-            v[i].set('{0:.2f}'.format(rotvAxis[i]))
-        self.canvas.set_rotaxes((rotuAxis, rotvAxis))
-        self.canvas.render()
-
-    def take_input(self, event):
-        """Take text input from input box."""
-        hasError = False
-        entry = self.inputText.get()
-        try:
-            if entry in ['', 'clear', 'reset']:
-                self.change('r')
-            elif entry in ['quit', 'exit', 'close']:
-                self.close()
-            else:
-                self.canvas.make_polytope(entry)
-                self.set_status('faces')
-        except:
-            self.set_status('badinput')
-        self.inputText.set('')   # Clear the input box
 
     def close(self):
         """Close the program."""
@@ -1168,7 +710,7 @@ class Creator():
         """
         self._polytope = None
         self._currWythoff = None
-        self._noSnub = False
+        self._noSnub = None
         if entry.startswith('{') and entry.endswith('}'):
             try:
                 if ',' in entry:
@@ -1358,7 +900,7 @@ class Creator():
         pqs = []
         for i in range(3):
             if '/' in symbol[i]:    # Convert all fractions into decimals
-                numer, denom = map(int,symbol[i].split('/'))
+                numer, denom = map(int(symbol[i].split('/')))
                 pqs.append(numer/denom)
             else:
                 pqs.append(int(symbol[i]))
@@ -1376,11 +918,11 @@ class Creator():
 
         # Check if the snub version exists, and disable its button if not
         if sorted(symbol) in SNUBABLE:
-            noSnub = False
+            noSnub = 0
         else:
             if selection == 'b':
                 raise ValueError
-            noSnub = True
+            noSnub = 1
 
         # Find fundamental Schwarz triangle
         triangles = [[[0.0 if abs(x) < EPSILON else x for x in
@@ -1718,12 +1260,16 @@ class Canvas(tk.Canvas):
     Display class that manages object rotation and display.
 
     Public methods:
-    make_polytope       Make new polytope and re-render.
-    set_rotaxes         Change the rotation axis-plane of all objects.
-    set_bar             Change the generating point and make new polyhedron.
-    rotate              Rotate objects on button press and re-render.
+    set_light           Change properties of the lighting and re-render.
+    set_colours         Change various colour settings and re-render.
+    set_rotax           Change the rotation axis-plane and re-render.
+    set_bar             Change the generating point and re-render.
+    set_view            Change the current viewing axis and re-render.
+    rotate              Rotate polytope on button press and re-render.
     get_data            Return data about the current polytope.
+    take_input          Take text input from input box.
     render              Clear the canvas and display the objects.
+    reset               Clear the canvas and reset all variables.
 
     Public variables:
     parent              Parent of class (Main)
@@ -1738,6 +1284,12 @@ class Canvas(tk.Canvas):
     _axes               Instance of Axes class (Axes)
     _currWythoff        To keep track of the current Wythoff numbers (list)
     _noSnub             To keep track of if the snub does not exist (bool)
+    _lightColour        The current light colour (list)
+    _vertexColours      The colour of vertices in wire mode (list)
+    _edgeColours        The colour of edges in wire mode (list)
+    _baseColours        The colour of polygonal faces (dict)
+    _sphereColours      The colours of the sphere overlay (list)
+    _menuColours        The colours of menus and the GUI (list)
     """
 
     def __init__(self, parent):
@@ -1747,58 +1299,80 @@ class Canvas(tk.Canvas):
         """
         self.parent = parent
         tk.Canvas.__init__(self, parent, relief=tk.GROOVE,
-                           background=self.parent.cols['menu']['canvas'],
+                           background=COLOURS[4][1],
                            borderwidth=5, width=300, height=200)
-        self._currPolytope = Polytope([])
+        self._currWythoff = ['2','3','3']
         self._sphere = Sphere(SPHERENUM, RADIUS)
         self._axes = Axes()
-        self._noSnub = False
+        self._noSnub = 0
 
-    def make_polytope(self, entry):
+    def set_light(self, lcol):
         """
-        Create a new polytope object and re-render.
-        entry: the text input that represents the object (str)
+        Change properties of the lighting and re-render.
+        lcol: the light colour in RGB integers between 0 and 255 (list, len=3)
         """
-        if not entry:   # Make blank polytope`
-            self._currPolytope = Polytope([])
-        else:
-            creator = Creator(entry)
-            polytope = creator.get_polytope()
-            if polytope:
-                self._currPolytope = polytope
-                if creator.get_wythoff()[0]:
-                    self._currWythoff, self._noSnub = creator.get_wythoff()
-                    self.parent.change('y', 1)  # Yes, this is a Wythoff
-                    if self._noSnub == True:
-                        self.parent.change('b')
-                    if self._currPolytope.star == True:
-                        self.parent.change('w')
-                else:
-                    self.parent.change('y', 0)  # No, this is not a Wythoff
-                self.set_rotaxes(None)
-                self.render()
+        self._lightColour = lcol
+        try:
+            self.parent.lred.set('{0:.0f}'.format(self._lightColour[0]))
+            self.parent.lgreen.set('{0:.0f}'.format(self._lightColour[1]))
+            self.parent.lblue.set('{0:.0f}'.format(self._lightColour[2]))
+        except:
+            pass    # Light colour scales not loaded yet, fix this soon!
+        self.parent.set_status('lcol')
+        self.render()
 
-    def set_rotaxes(self, rotAxis):
+    def set_colours(self,vcol=None,ecol=None,bcol=None,scol=None,mcol=None):
         """
-        Change the current rotation axis-plane of all objects.
+        Change various colour settings and re-render.
+
+        vcol: the colour of vertices in wireframe mode (list, len=3)
+        ecol: the colour of edges in wireframe mode (list, len=6)
+        bcol: the colour of different types of polygonal faces (dict, 3:22)
+        scol: the colours of the sphere overlay (list, len=4)
+        mcol: the colours of menus and the GUI (list, len=3)
+        All defaults are None, colours are in RGB integers between 0 and 255.
+        """
+        if vcol:
+            self._vertexColours = vcol
+        if ecol:
+            self._edgeColours = ecol
+        if bcol:
+            self._baseColours = bcol
+        if scol:
+            self._sphereColours = scol
+        if mcol:
+            self._menuColours = mcol
+        self.render()
+
+    def set_rotax(self, rotAxis):
+        """
+        Change the current rotation axis-plane and re-render.
         rotAxis: the rotation axis-plane as a list of two axes (list, len=2)
-                 default is the previous one, when only _currPolytope changes
-                 all elements are in spherical coordinates (list, len=3)
+                 all elements are in spherical coordinates (list, len=4)
         """
-        if rotAxis:
-            self._currPolytope.set_rotaxis(rotAxis)
-            self._sphere.set_rotaxis(rotAxis)
-            self._axes.set_rotaxis(rotAxis)
+        if rotAxis == 'xw':
+            self.rotAxis = [(1,0,0,0),(0,0,0,1)]
+        elif rotAxis == 'yw':
+            self.rotAxis = [(0,1,0,0),(0,0,0,1)]
+        elif rotAxis == 'zw':
+            self.rotAxis = [(0,0,1,0),(0,0,0,1)]
+        elif rotAxis == 'xy':
+            self.rotAxis = [(1,0,0,0),(0,1,0,0)]
+        elif rotAxis == 'yz':
+            self.rotAxis = [(0,1,0,0),(0,0,1,0)]
+        elif rotAxis == 'xz':
+            self.rotAxis = [(1,0,0,0),(0,0,1,0)]
         else:
-            rotAxis = [(self.parent.rutheta.get(), self.parent.ruphi.get(),
-                        self.parent.ruomega.get()),
-                       (self.parent.rvtheta.get(), self.parent.rvphi.get(),
-                        self.parent.rvomega.get())]
-            self._currPolytope.set_rotaxis(rotAxis)
+            self.rotAxis = rotAxis  # Manual input, not button press
+        self._currPolytope.set_rotaxis(self.rotAxis)
+        self._sphere.set_rotaxis(self.rotAxis)
+        self._axes.set_rotaxis(self.rotAxis)
+        self.parent.set_status('rot')
+        self.render()
 
     def set_bar(self, bar):
         """
-        Change the Wythoff generating point and make new uniform polyhedron.
+        Change the Wythoff generating point and re-render.
         bar: the type of generating point (str)
         """
         p = str(self._currWythoff[0])
@@ -1822,12 +1396,30 @@ class Canvas(tk.Canvas):
             symbol = ' '.join(['(',q,s,'|',p,')'])
         elif bar == 'sp':
             symbol = ' '.join(['(',s,p,'|',q,')'])
-        self.make_polytope(symbol)
-        self.parent.set_status('faces')
+        creator = Creator(symbol)
+        self._currPolytope = creator.get_polytope()
+        self._currWythoff, self._noSnub = creator.get_wythoff()
+        self.set_rotax(self.rotAxis)
+        self.render()
+
+    def set_view(self, viewAxis):
+        """
+        Change the current viewing axis and re-render.
+        viewAxis: the viewing axis in spherical coordinates (list, len=3)
+        """
+        self._viewAxis = satisfy_axis_restrictions(viewAxis)
+        try:
+            self.parent.vtheta.set('{0:.2f}'.format(self._viewAxis[0]))
+            self.parent.vphi.set('{0:.2f}'.format(self._viewAxis[1]))
+            self.parent.vomega.set('{0:.2f}'.format(self._viewAxis[2]))
+        except:
+            pass    # Camera position scales not loaded yet, fix this soon!
+        self.parent.set_status('view')
+        self.render()
 
     def rotate(self, direction, rotAngle=ROTANGLE):
         """
-        Rotate objects on button press and re-render.
+        Rotate polytope on button press and re-render.
         direction: left is 0, right is 1 (int)
         rotAngle: number of radians to rotate (float), default ROTANGLE
         """
@@ -1847,103 +1439,187 @@ class Canvas(tk.Canvas):
         """
         Return data about the current polytope.
         event: the type of data to return (str)
+               'view', 'lcol', 'rot', 'faces', 'star'
         return: some data to put on the status bar (str)
         """
+        if event == 'view':
+            return ', '.join(['{0:.2f}'.format(self._viewAxis[i])
+                              for i in range(3)])
+        if event == 'lcol':
+            return ', '.join([str(self._lightColour[i]) for i in range(3)])
+        if event == 'rot':
+            u = ', '.join(['{0:.2f}'.format(self.rotAxis[0][i])
+                           for i in range(4)])
+            v = ', '.join(['{0:.2f}'.format(self.rotAxis[1][i])
+                           for i in range(4)])
+            return u + ' and ' + v
         if event == 'faces':
             return self._currPolytope.get_face_sides()
         if event == 'star':
             return self._currPolytope.star
 
-    def _view(self, points, viewAxis):
+    def take_input(self, event):
+        """
+        Take text input from input box.
+        entry: the input (str), assigned in the function, not a parameter
+               general: '', 'clear', 'reset', 'quit', 'exit', 'close'
+               zoom/dist/view: 'z0', 'd0', 'v0,0', 'v0,0,0'
+               light: 'la0,0', 'la0,0,0', 'lc1,1,1', 'li0'
+               rotaxis: 'r0,0,0', 'r0,0,0,0/0,0,0,0'
+        """
+        hasError = 0
+        entry = self.parent.inputText.get()
+
+        try:    # If anything fails, catch the error and set hasError to 1
+            if entry in ['', 'clear', 'reset']:             # Clear canvas
+                self.parent.set_status('clear')
+                self.reset()
+            elif entry in ['quit', 'exit', 'close']:        # Close program
+                self.parent.close()
+
+            elif entry.startswith('z'):                     # Set zoom
+                zoom = int(entry[1:])
+                if zoom < 1:                                # Must be positive
+                    hasError = 1
+                else:
+                    self.parent.change('z', zoom)
+            elif entry.startswith('d'):                     # Set distance
+                distance = int(entry[1:])
+                if distance < 1:
+                    hasError = 1
+                else:
+                    self.parent.change('d', distance)
+            elif entry.startswith('v'):                     # Set viewing axis
+                viewAxis = [float(num) for num in entry[1:].split(',')]
+                if len(viewAxis) < 3:   # Add omega if axis specified in 3D
+                    viewAxis.append(pi/2)
+                if len(viewAxis) != 3:  # After adding omega, length must be 3
+                    hasError = 1
+                else:
+                    self.set_view(viewAxis)
+
+            elif entry.startswith('li'):                # Set light intensity
+                lint = float(entry[2:])
+                if lint < 0 or lint > 2:
+                    hasError = 1
+                else:
+                    self.parent.change('li', lint)
+            elif entry.startswith('la'):                # Set light axis
+                laxis = [float(num) for num in entry[2:].split(',')]
+                if len(laxis) < 3:
+                    laxis.append(pi/2)
+                if len(laxis) != 3:
+                    hasError = 1
+                else:
+                    self.change('la', laxis)
+            elif entry.startswith('lc'):                # Set light colour
+                lightColour = [int(num) for num in entry[2:].split(',')]
+                if len(lightColour) != 3:
+                    hasError = 1
+                else:
+                    self.set_light(lightColour)
+
+            elif entry.startswith('r'):                 # Set rotation axis
+                rotAxis = entry[1:].split('/')
+                if len(rotAxis) == 2:       # 3D rotation plane, two vectors
+                    u = list(map(float, rotAxis[0].split(',')))
+                    v = list(map(float, rotAxis[1].split(',')))
+                    if (len(u) != 4 or len(v) != 4):
+                        hasError = 1
+                    else:
+                        self.set_rotax((u, v))
+                elif len(rotAxis) == 1:     # 2D rotation axis, one vector
+                    u = list(map(float, rotAxis[0].split(',')))
+                    if len(u) == 3:
+                        u.append(0)         # Cartesian coordinates, add 0
+                    if len(u) != 4:
+                        hasError = 1
+                    else:
+                        self.set_rotax(u, [0,0,0,1])    # Normal to w-axis
+                else:
+                    hasError = 1
+
+            else:
+                creator = Creator(entry)
+                polytope = creator.get_polytope()
+                if not polytope:
+                    hasError = 1
+                else:
+                    self._currPolytope = polytope
+                    if creator.get_wythoff():
+                        self._currWythoff,self._noSnub = creator.get_wythoff()
+                        if self._noSnub == 1:
+                            self.parent.change('b')
+                    self.set_rotax(self.rotAxis)
+                    self.render()   # Create new polytope with input
+        except:
+            hasError = 1
+
+        if hasError == 1:
+            self.parent.set_status('badinput')
+        self.parent.inputText.set('')   # Clear the input box
+
+    def _view(self, points):
         # Project 4D points on the plane normal to the viewing axis.
         # points: a list of points in 4D (list)
         #         all elements are in spherical coordinates (list, len=4)
-        # viewAxis: the viewing axis in spherical coordinates (list, len=3)
         # return: a list of points on the viewing plane (list)
         #         all elements are in Cartesian coordinates (list, len=2)
 
-        so = math.sin(viewAxis[2])
-        co = math.cos(viewAxis[2])
-        sp = math.sin(viewAxis[1])
-        cp = math.cos(viewAxis[1])
-        st = math.sin(viewAxis[0])
-        ct = math.cos(viewAxis[0])
+        so = math.sin(self._viewAxis[2])
+        co = math.cos(self._viewAxis[2])
+        sp = math.sin(self._viewAxis[1])
+        cp = math.cos(self._viewAxis[1])
+        st = math.sin(self._viewAxis[0])
+        ct = math.cos(self._viewAxis[0])
 
-        w = (-st, ct, 0, 0)                     # Directions of bases of
-        h = (cp*ct, cp*st, -sp, 0)              # the picture hyperplane
+        u = (so*sp*ct, so*sp*st, so*cp, co)
+        w = (-st, ct, 0, 0)
+        h = (cp*ct, cp*st, -sp, 0)
         b = (-co*sp*ct, -co*sp*st, -co*cp, so)
-        u = (so*sp*ct, so*sp*st, so*cp, co)     # Direction of viewAxis
-        d = self.parent.dist.get()              # Distance along viewAxis
-        f = d + RETINA                          # Distance to picture plane
+        d = self.parent.dist.get()
+        f = d + RETINA
 
         result = []
-        for i in points:
-            e = sum([i[j]*u[j] for j in range(3)])
-            t = (f-e)/(d-e)
-            g = 1-t
-            k = d*t-f
-
-            # Gotta find m,n,p to satisfy the vector equation:
-            # g.i + k.u = p.b + n.h + m.w
-            # Expands into this system of equations. Can't divide by zero!
-            # g*x + k*so*sp*ct = - p*co*sp*ct + n*cp*ct - m*st
-            # g*y + k*so*sp*st = - p*co*sp*st + n*cp*st + m*ct
-            # g*z + k*so*cp    = - p*co*cp    - n*sp
-            # g*w + k*co       = + p*so
-            if abs(so) < EPSILON:
-                if abs(sp) < EPSILON:
-                    p = (g*i[2] + k*u[2]) / -1
-                    if abs(st) < EPSILON:
-                        n = (g*i[0] + k*u[0] - p*b[0])
-                        m = (g*i[1] + k*u[1] - p*b[1] - n*h[1])
-                    elif abs(ct) < EPSILON:
-                        n = (g*i[1] + k*u[1] - p*b[1])
-                        m = (g*i[0] + k*u[0] - p*b[0] - n*h[0]) / -1
+        for x,y,z,w in points:
+            t = (f-x*u[0]-y*u[1]-z*u[2]-w*u[3])/ \
+                (d-x*u[0]-y*u[1]-z*u[2]-w*u[3])
+            if abs(self._viewAxis[2]) < EPSILON:
+                if abs(self._viewAxis[1] - pi/2) < EPSILON:
+                    m = (1-t)*-z*sp
+                    if (abs(self._viewAxis[0]) < EPSILON or
+                        abs(self._viewAxis[0] - pi) < EPSILON):
+                        n = (1-t)*y*ct
+                        p = (1-t)*(-x*co*sp*ct)
                     else:
-                        n = (g*i[0] + k*u[0] - p*b[0]) * ct + \
-                            (g*i[1] + k*u[1] - p*b[1]) * st
-                        m = (g*i[0] + k*u[0] - p*b[0] - n*h[0]) / -st
+                        n = (1-t)*(x-y*ct/st)*-st
+                        p = ((1-t)*y-n*ct)/(-co*sp*st)
                 else:
-                    if abs(st) < EPSILON:
-                        p = ((g*i[0] + k*u[0]) * sp +  \
-                             (g*i[2] + k*u[2]) * cp) / \
-                            (b[0] * sp + b[2] * cp)
-                        n = (g*i[0] + k*u[0] - p*b[0]) / cp
-                        m = (g*i[1] + k*u[1] - p*b[1] - n*h[1])
-                    elif abs(ct) < EPSILON:
-                        p = ((g*i[1] + k*u[1]) * sp +  \
-                             (g*i[2] + k*u[2]) * cp) / \
-                            (b[1] * sp + b[2] * cp)
-                        n = (g*i[1] + k*u[1] - p*b[1]) / cp
-                        m = (g*i[0] + k*u[0] - p*b[0] - n*h[0]) / -1
+                    if (abs(self._viewAxis[0]) < EPSILON or
+                        abs(self._viewAxis[0] - pi) < EPSILON):
+                        n = (1-t)*y*ct
+                        m = (1-t)*(x-z*sp/cp*ct)*cp/ct
                     else:
-                        p = (((g*i[0] + k*u[0]) * ct +                  \
-                              (g*i[1] + k*u[1]) * st) * sp +            \
-                             (h[0]*ct + h[1]*st) * (g*i[2] + k*u[2])) / \
-                            ((b[0]*ct + b[1]*st) * sp +                 \
-                             (h[0]*ct + h[1]*st) * b[2])
-                        n = (g*i[2] + k*u[2] - p*b[2]) / -sp
-                        m = (g*i[0] + k*u[0] - p*b[0] - n*h[0]) / -st
+                        n = (1-t)*(x-y*ct/st)*(st/(ct*ct-st*st))
+                        m = ((1-t)*(y-z*sp/cp*st)+n*ct)*cp/st
+                    p = ((1-t)*z+m*sp)/(-co*cp)
             else:
-                p = (g*i[3] + k*u[3]) / so
-                if abs(sp) < EPSILON:
-                    if abs(st) < EPSILON:
-                        n = (g*i[0] + k*u[0] - p*b[0])
-                        m = (g*i[1] + k*u[1] - p*b[1] - n*h[1])
-                    elif abs(ct) < EPSILON:
-                        n = (g*i[1] + k*u[1] - p*b[1])
-                        m = (g*i[0] + k*u[0] - p*b[0] - n*h[0]) / -1
+                p = ((1-t)*w+(d*t-f)*co)/so
+                if abs(self._viewAxis[1]) < EPSILON:
+                    if (abs(self._viewAxis[0]) < EPSILON or
+                        abs(self._viewAxis[0] - pi) < EPSILON):
+                        n = (1-t)*y*ct
+                        m = (1-t)*x*cp*ct
                     else:
-                        n = (g*i[0] + k*u[0] - p*b[0]) * ct + \
-                            (g*i[1] + k*u[1] - p*b[1]) * st
-                        m = (g*i[0] + k*u[0] - p*b[0] - n*h[0]) / -st
+                        n = (1-t)*(x-y*ct/st)*-st
+                        m = ((1-t)*y-n*ct)/(cp*st)
                 else:
-                    n = (g*i[2] + k*u[2] - p*b[2]) / -sp
-                    if abs(ct) < EPSILON:
-                        m = (g*i[0] + k*u[0] - p*b[0] - n*h[0]) / -st
+                    m = -((1-t)*z+(d*t-f)*so*sp+p*co*cp)/sp
+                    if (abs(self._viewAxis[0]) < EPSILON or
+                        abs(self._viewAxis[0] - pi) < EPSILON):
+                        n = (1-t)*y*ct
                     else:
-                        m = (g*i[1] + k*u[1] - p*b[1] - n*h[1]) / ct
-
+                        n = -((1-t)*x+(d*t-f)*so*sp*ct-m*cp*ct+p*co*sp*ct)/st
             result.append((m*self.parent.zoom.get(),n*self.parent.zoom.get()))
         return result
 
@@ -1954,48 +1630,43 @@ class Canvas(tk.Canvas):
         w = self.winfo_width()//2   # Center the frame
         h = self.winfo_height()//2
 
-        # Get viewAxis and lightAxis data from parent
-        viewAxis = [self.parent.vtheta.get(), self.parent.vphi.get(),
-                    self.parent.vomega.get()]
-        # Light axis only has theta and phi, omega will always be 1.57
-        lightAxis = [self.parent.ltheta.get(), self.parent.lphi.get(), pi/2]
-        laxis = convert([self.parent.dist.get()] + lightAxis,True)
-        lint = self.parent.lint.get()
-        lcol = [self.parent.lred.get(), self.parent.lgreen.get(),
-                self.parent.lblue.get()]
-
         # Draw the sphere overlay
         if w != 0 and h != 0 and self.parent.sphere.get() == True:
             # Draw the lines of longitude and latitude
             # _view flipped the x-coordinates upside down for some reason
             # w and h map the viewing plane origin to the centre of the screen
             points = [(-point[0]+w, point[1]+h) for point in
-                      self._view(self._sphere.get_points(), viewAxis)]
+                      self._view(self._sphere.get_points())]
             edges = self._sphere.get_edges()
             for edge in edges:
-                self.create_line(points[edge[0]], points[edge[1]], width=3,
-                                 fill=self.parent.cols['line']['sphere'])
+                self.create_line(points[edge[0]], points[edge[1]],
+                                 fill=COLOURS[1][3], width=3)
 
         # Draw the coordinate axes
         if w != 0 and h != 0 and self.parent.axes.get() == True:
             # Half-length of the axis, hard-coded, ZeroDivisionError somewhere
             l = 0.3 * RADIUS * self.parent.dist.get() / self.parent.zoom.get()
             axes = [normalize(axis, [l]) for axis in self._axes.get_points()]
-            points = [(-point[0]+w, point[1]+h) for point in
-                      self._view(axes, viewAxis)]
+            points = [(-point[0]+w, point[1]+h) for point in self._view(axes)]
             edges = self._axes.get_edges()
             for i,edge in enumerate(edges):
                 self.create_line(points[edge[0]], points[edge[1]],
-                                 fill=self.parent.cols['axis'][i], width=5)
+                                 fill=COLOURS[3][i+1], width=5)
 
         if not self._currPolytope.get_points():
             return      # Do nothing if the polytope is empty
 
         # Draw the actual polytope, since we know it exists
+        self.parent.set_status('faces') # Show what faces it has
         points = [(-point[0]+w, point[1]+h) for point in
-                  self._view(self._currPolytope.get_points(), viewAxis)]
+                  self._view(self._currPolytope.get_points())]
         # As the camera moves away, the light source moves the same distance
-        camera = convert([self.parent.dist.get()] + viewAxis,True)
+        camera = convert([self.parent.dist.get()] + self._viewAxis,True)
+        # Light axis only has theta and phi, omega will always be 1.57
+        lightAxis = [self.parent.ltheta.get(), self.parent.lphi.get(), pi/2]
+        laxis = convert([self.parent.dist.get()] + lightAxis,True)
+        lint = self.parent.lint.get()
+        lcol = self._lightColour
 
         # Display by drawing polygons in normal mode
         if self.parent.wire.get() == False:
@@ -2007,8 +1678,8 @@ class Canvas(tk.Canvas):
 
             # If the polytope is a single polygon, both sides should be shaded
             if len(faces) == 1:
-                colour = []                         # Get polygon base colour
-                hexcol = self.parent.cols['face'][sideTypes[0]]
+                hexcol = COLOURS[2][sideTypes[0]]   # Get polygon base colour
+                colour = []
                 for i in range(3):
                     deccol = int(hexcol[1+i], 16)   # Convert hex to dec
                     # Multiply deccol (0-15) by 16, since lcol is (0-255)
@@ -2019,8 +1690,8 @@ class Canvas(tk.Canvas):
                     colour.append(int(min(255, abs(col))))
                 rgb = '#{0:02x}{1:02x}{2:02x}'.format(*colour)
                 edges = [points[side] for side in faces[0]]
-                self.create_polygon(edges,width=3,fill=rgb,
-                                    outline=self.parent.cols['line']['face'])
+                self.create_polygon(edges,outline=COLOURS[1][5],
+                                    width=3,fill=rgb)
                 return
 
             # Otherwise, sort faces by distance to the camera and draw them
@@ -2028,7 +1699,7 @@ class Canvas(tk.Canvas):
                 distances[face] = distance2(centres[face], camera)
             order = sorted(distances, key=distances.get, reverse=True)
             for face in order:              # Colour the faces
-                hexcol = self.parent.cols['face'][sideTypes[face]]
+                hexcol = COLOURS[2][sideTypes[face]]
                 colour = []
                 for i in range(3):
                     deccol = int(hexcol[1+i], 16)
@@ -2036,8 +1707,8 @@ class Canvas(tk.Canvas):
                     colour.append(int(max(0, min(255, col))))
                 rgb = '#{0:02x}{1:02x}{2:02x}'.format(*colour)
                 edges = [points[side] for side in faces[face]]
-                self.create_polygon(edges,width=3,fill=rgb,
-                                    outline=self.parent.cols['line']['face'])
+                self.create_polygon(edges,outline=COLOURS[1][5],
+                                    width=3,fill=rgb)
             return
 
         # Display by drawing lines in wireframe mode
@@ -2048,7 +1719,7 @@ class Canvas(tk.Canvas):
             for colour in colours:
                 self.create_oval([p-5 for p in points[colour[0]]],
                                  [p+5 for p in points[colour[0]]],
-                                 fill=self.parent.cols['point'][colour[1]])
+                                 fill=COLOURS[0][colour[1]])
             # Create list of doubles of edge distance and edge number
             distances = []
             for i in range(len(edges)):
@@ -2057,13 +1728,28 @@ class Canvas(tk.Canvas):
             closest = self.parent.dist.get() - RADIUS
             for d,e in order:
                 # Colour of closest line is 0, colour of furthest line is 240
-                col = max(0, min(255, int(120 * (d - closest) / RADIUS)))
+                col = int(120 * (d - closest) / RADIUS)
                 rgb = '#' + '{0:02x}{0:02x}{0:02x}'.format(col)
                 # Width of closest line is 5, width of furthest line is 1
                 width = int(5 - 2 * (d - closest) / RADIUS)
                 self.create_line(points[edges[e][0]], points[edges[e][1]],
                                  fill=rgb, width=width)
             return
+
+    def reset(self):
+        # Clear the canvas and reset all variables to default state.
+        self.delete(tk.ALL)
+        self._currPolytope = Polytope([])   # Empty polytope to rotate
+        self.set_rotax('xw')
+        self.set_view([0, 0, pi/2])
+        self.set_light([255,255,255])
+        self.parent.change('r')
+        if self.get_data('star') == 1:
+            self.parent.change('w')
+        if self._noSnub == 1:
+            self.parent.change('b')
+        self.parent.set_status('clear')
+        self.render()
 
 
 
@@ -2121,11 +1807,10 @@ class Object():
         """
         Set the perpendicular unit axes of rotation of the canvas object.
         axes: the perpendicular unit axes of rotation (list, len=2)
-              all elements are in spherical coordinates (list, len=3)
+              all elements are in Cartesian coordinates (list, len=4)
         """
-        # Remember to add in the value for the radius when converting
-        self._axis_i = normalize(convert([1] + list(axes[0]), True))
-        self._axis_j = normalize(convert([1] + list(axes[1]), True))
+        self._axis_i = normalize(axes[0])
+        self._axis_j = normalize(axes[1])
 
     def rotate(self, rotAngle):
         """
@@ -2239,7 +1924,7 @@ class Polytope(Object):
                 self._remove_faces()
         else:
             super().__init__([], [])    # Empty polytope, only rotates
-            self.star = False
+            self.star = 0
 
     def _set_faces(self):
         # Create a dictionary of faces, a dictionary of face sides,
@@ -2693,13 +2378,6 @@ class Axes(Object):
 
 
 
-if __name__ == '__main__':
-    root = tk.Tk()
-    main = Main(root)
-    root.bind('<Up>', lambda event: main.change('d-'))
-    root.bind('<Down>', lambda event: main.change('d+'))
-    root.bind('<Left>', lambda event: main.canvas.rotate(0))
-    root.bind('<Right>', lambda event: main.canvas.rotate(1))
-    icon = tk.PhotoImage(file='icon.gif')
-    root.iconphoto(icon, icon)
-    root.mainloop()
+root = tk.Tk()
+main = Main(root)
+root.mainloop()
