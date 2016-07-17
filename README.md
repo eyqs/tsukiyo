@@ -18,7 +18,7 @@ Probably works on earlier versions too. Definitely does not work on Python 2.
 
 ## Usage
 
-Type in Schläfli or Wythoff symbols to generate a polytope, then rotate it
+Type in Schlafli or Wythoff symbols to generate a polytope, then rotate it
 by pressing the big Rotate buttons or by using the left and right arrow keys.
 Press the smaller buttons under Rotate to change the current rotation axis;
 xw, yw, and zw are equivalent to rotating about the x-, y-, and z-axis in 3D.
@@ -31,7 +31,7 @@ or use the up and down arrow keys to move closer or further from the polytope.
 
 ### Features
 
-Supported Schläfli symbols:
+Supported Schlafli symbols:
 - `{3}, {4}, {5}, ..., {10}` (triangle to decagon)
 - `{5/2}, {5/3}, {7/2}, {7/3}, ..., {9/4}, {10/3}` (pentagram to decagram)
 - `{3,3}, {3,4}, {3,5}, {4,3}, {5,3}` (Platonic solids)
@@ -51,7 +51,7 @@ Unsupported, but coming soon:
 - `{1}, {2}` (point, line)
 - `{11}, {12}, ..., {n}` (all regular polygons)
 - `{11/2}, {11/3}, {11/4}, ..., {n/d}` (all regular star polygons)
-- `{5/2,5}, {5,5/2}, {5/2,3}, {3,5/2}` (Kepler–Poinsot polyhedra)
+- `{5/2,5}, {5,5/2}, {5/2,3}, {3,5/2}` (Kepler-Poinsot polyhedra)
 - `{3,3,3}, {4,3,3}, {3,3,4}, {3,4,3}, {5,3,3}, {3,3,5}` (regular 4-polytopes)
 - `(2 2 16), (2 2 17), ..., (2 2 n)` (all bipyramids)
 - `(2 2 4 |), (2 2 5 |), ..., (2 2 n |)` (all prisms)
@@ -76,7 +76,7 @@ Moon logo based on <https://commons.wikimedia.org/wiki/File:FullMoon2010.jpg>
 
 ## License
 
-Copyright © 2014, 2015, 2016 Eugene Y. Q. Shen.
+Copyright &copy; 2014, 2015, 2016 Eugene Y. Q. Shen.
 
 Tsukiyo is free software: you can redistribute it and/or
 modify it under the terms of the GNU General Public License

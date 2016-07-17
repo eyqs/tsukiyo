@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 Tsukiyo v1.0.0
-Copyright © 2014, 2015, 2016 Eugene Y. Q. Shen.
+Copyright (c) 2014, 2015, 2016 Eugene Y. Q. Shen.
 
 Tsukiyo is free software: you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -579,8 +579,8 @@ class Main(ttk.Frame):
         self.lint = tk.DoubleVar()
         self.ltheta = tk.DoubleVar()
         self.lphi = tk.DoubleVar()
-        lightWidgets = [('cd', self.lint, 2), ('θ', self.ltheta, 6.28),
-                        ('φ', self.lphi, 3.14)]     # t = text, v = variable
+        lightWidgets = [('cd', self.lint, 2), ('\u03b8', self.ltheta, 6.28),
+                        ('\u03d5', self.lphi, 3.14)]# t = text, v = variable
         for i,(t,v,o) in enumerate(lightWidgets):   # o = maximum value (to)
             l = ttk.Label(self.guiLeft, text=t)
             l.grid(row=12, column=i)
@@ -668,8 +668,9 @@ class Main(ttk.Frame):
         self.vtheta = tk.DoubleVar()
         self.vphi = tk.DoubleVar()
         self.vomega = tk.DoubleVar()
-        self.viewWidgets = [('θ', self.vtheta, 6.28), ('φ', self.vphi, 3.14),
-                            ('ω', self.vomega, 3.14)]
+        self.viewWidgets = [('\u03b8', self.vtheta, 6.28),
+                            ('\u03d5', self.vphi, 3.14),
+                            ('\u03c9', self.vomega, 3.14)]
         self.viewEntries = []
         for i,(t,v,o) in enumerate(self.viewWidgets):
             l = ttk.Label(self.guiRight, text=t)
@@ -693,8 +694,9 @@ class Main(ttk.Frame):
         self.rutheta = tk.DoubleVar()
         self.ruphi = tk.DoubleVar()
         self.ruomega = tk.DoubleVar()
-        self.rotuWidgets = [('θ', self.rutheta, 6.28),('φ', self.ruphi, 3.14),
-                            ('ω', self.ruomega, 3.14)]
+        self.rotuWidgets = [('\u03b8', self.rutheta, 6.28),
+                            ('\u03d5', self.ruphi, 3.14),
+                            ('\u03c9', self.ruomega, 3.14)]
         self.rotuEntries = []
         for i,(t,v,o) in enumerate(self.rotuWidgets):
             l = ttk.Label(self.guiRight, text=t)
@@ -716,8 +718,9 @@ class Main(ttk.Frame):
         self.rvtheta = tk.DoubleVar()
         self.rvphi = tk.DoubleVar()
         self.rvomega = tk.DoubleVar()
-        self.rotvWidgets = [('θ', self.rvtheta, 6.28),('φ', self.rvphi, 3.14),
-                            ('ω', self.rvomega, 3.14)]
+        self.rotvWidgets = [('\u03b8', self.rvtheta, 6.28),
+                            ('\u03d5', self.rvphi, 3.14),
+                            ('\u03c9', self.rvomega, 3.14)]
         self.rotvEntries = []
         for i,(t,v,o) in enumerate(self.rotvWidgets):
             l = ttk.Label(self.guiRight, text=t)
@@ -1149,8 +1152,8 @@ class Creator():
 
     Private methods:
     __init__            Construct Creator class.
-    _schlafli2D         Create a polygon using a 2D Schläfli symbol.
-    _schlafli3D         Create a polyhedron using a 3D Schläfli symbol.
+    _schlafli2D         Create a polygon using a 2D Schlafli symbol.
+    _schlafli3D         Create a polyhedron using a 3D Schlafli symbol.
     _wythoff            Create a polyhedron using a Wythoff symbol.
     _wythoff_snub       Find the generating point of a snub polyhedron.
     _schwarz            Reflect the generating point everywhere.
@@ -1211,8 +1214,8 @@ class Creator():
         return self._currWythoff, self._noSnub
 
     def _schlafli2D(self, entry):
-        # Create a polygon using a 2D Schläfli symbol.
-        # entry: the 2D Schläfli symbol (str)
+        # Create a polygon using a 2D Schlafli symbol.
+        # entry: the 2D Schlafli symbol (str)
         #        p or p/d where p and d are ints
         # return: the [points, edges, pointColours] of the polygon
         num = entry.split('/')
@@ -1233,8 +1236,8 @@ class Creator():
         return points, edges, colours
 
     def _schlafli3D(self, entry):
-        # Create a polyhedron using a 3D Schläfli symbol.
-        # entry: the 3D Schläfli symbol (str)
+        # Create a polyhedron using a 3D Schlafli symbol.
+        # entry: the 3D Schlafli symbol (str)
         #        p,q where p and q are ints (no support for star polyhedra)
         # return: the [points, edges, pointColours] of the polyhedron
 
